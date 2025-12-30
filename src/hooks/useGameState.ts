@@ -15,19 +15,20 @@ import {
   getUnitTarget,
   getNextTarget,
   createUnit,
-  moveUnit,
-  damageUnit,
-  findNearestEnemy,
-  findNearestEnemyBuilding,
-  findNearestEnemyUnitForBuilding,
-  damageBuilding,
-  getDistance,
+  separateUnits,
   getSpawnUnitType,
   getSpawnInterval,
-  separateUnits,
-  lineCrossesImpassable,
+  getDistance,
   GAME_CONFIG,
 } from "@/lib/gameLogic";
+import { COMBAT_CONSTANTS } from "@/lib/game/constants";
+import { processUnitMovement, resetAttackFlag } from "@/lib/game/unitMovement";
+import { processUnitCombat } from "@/lib/game/unitCombat";
+import {
+  processBuildingAttacks,
+  processUnitAttacksOnBuildings,
+} from "@/lib/game/buildingCombat";
+import { applyStateUpdates } from "@/lib/game/gameStateUpdater";
 
 export function useGameState() {
   const [gameState, setGameState] = useState<GameState>(() => {
@@ -68,385 +69,34 @@ export function useGameState() {
       lastUpdateRef.current = now;
 
       setGameState((prev) => {
-        const newState = { ...prev };
+        let newState = { ...prev };
 
-        // Обновление юнитов
-        const allUnits = prev.players.flatMap((p) => p.units);
-        // Собираем все юниты всех игроков для отталкивания (используем prev для стабильности)
-        const allUnitsForSeparation = prev.players.flatMap((p) => p.units);
+        // Собираем все здания для поиска целей
+        const getAllEnemyBuildings = (playerId: PlayerId): Building[] => {
+          return newState.players
+            .filter((p) => p.id !== playerId && p.isActive)
+            .flatMap((p) => [p.castle, ...p.barracks, ...p.towers])
+            .filter((b) => b.health > 0);
+        };
 
+        // Обновление движения юнитов
         newState.players = prev.players.map((player) => {
           if (!player.isActive) return player;
 
-          // Движение юнитов
-          // Получаем все здания врагов для поиска целей
-          const allEnemyBuildings = newState.players
-            .filter((p) => p.id !== player.id && p.isActive)
-            .flatMap((p) => [p.castle, ...p.barracks, ...p.towers])
-            .filter((b) => b.health > 0);
+          const allEnemyBuildings = getAllEnemyBuildings(player.id);
+          const allCurrentUnits = newState.players.flatMap((p) => p.units);
 
           let updatedUnits = player.units.map((unit) => {
             if (unit.health <= 0) return unit;
 
-            // Сбрасываем флаг атаки через 300мс
-            let updatedUnit = { ...unit };
-            if (
-              unit.isAttacking &&
-              unit.lastAttackTime &&
-              now - unit.lastAttackTime > 300
-            ) {
-              updatedUnit.isAttacking = false;
-              updatedUnit.attackTarget = undefined;
-            }
-
-            // СНАЧАЛА проверяем промежуточные цели - это имеет приоритет
-            // Проверяем, есть ли промежуточные цели, которые еще не достигнуты
-            const hasIntermediateTargets =
-              updatedUnit.intermediateTargets &&
-              updatedUnit.currentIntermediateIndex !== undefined &&
-              updatedUnit.currentIntermediateIndex <
-                updatedUnit.intermediateTargets.length;
-
-            if (hasIntermediateTargets && updatedUnit.intermediateTargets) {
-              // Восстанавливаем targetPosition из текущей промежуточной цели
-              const currentIntermediateTarget =
-                updatedUnit.intermediateTargets[
-                  updatedUnit.currentIntermediateIndex!
-                ];
-              if (
-                !updatedUnit.targetPosition ||
-                updatedUnit.targetPosition.x !== currentIntermediateTarget.x ||
-                updatedUnit.targetPosition.y !== currentIntermediateTarget.y
-              ) {
-                updatedUnit = {
-                  ...updatedUnit,
-                  targetPosition: currentIntermediateTarget,
-                };
-              }
-            }
-
-            // Проверка на ближайшего врага (юнит или здание) - используем все юниты игроков
-            const allCurrentUnits = newState.players.flatMap((p) => p.units);
-            const enemyUnit = findNearestEnemy(updatedUnit, allCurrentUnits);
-            const enemyBuilding = findNearestEnemyBuilding(
-              updatedUnit,
-              allEnemyBuildings
-            );
-
-            // Если есть промежуточные цели, приоритет - дойти до них
-            // Атакуем врагов только если они находятся в непосредственной близости (в радиусе атаки)
-            if (hasIntermediateTargets) {
-              const currentIntermediateTarget =
-                updatedUnit.intermediateTargets![
-                  updatedUnit.currentIntermediateIndex!
-                ];
-
-              // Проверяем, является ли текущая промежуточная цель позицией живого здания
-              const buildingAtIntermediateTarget = allEnemyBuildings.find(
-                (building) => {
-                  const distance = getDistance(
-                    building.position,
-                    currentIntermediateTarget
-                  );
-                  return distance < 50; // Здание считается в этой позиции, если близко
-                }
-              );
-
-              // Проверяем, близок ли юнит к текущей промежуточной цели
-              const distanceToTarget = getDistance(
-                updatedUnit.position,
-                currentIntermediateTarget
-              );
-
-              // Если промежуточная цель - это позиция живого здания, и юнит близко к ней
-              if (
-                buildingAtIntermediateTarget &&
-                distanceToTarget <= updatedUnit.attackRange
-              ) {
-                // Проверяем, можем ли мы атаковать здание (не блокирует ли ландшафт)
-                if (
-                  !lineCrossesImpassable(
-                    updatedUnit.position,
-                    buildingAtIntermediateTarget.position
-                  )
-                ) {
-                  // Остаемся и атакуем здание, не переключаемся на следующую промежуточную цель
-                  return { ...updatedUnit, isMoving: false };
-                } else {
-                  // Ландшафт блокирует, пытаемся подойти ближе
-                  return moveUnit(updatedUnit, deltaTime);
-                }
-              }
-
-              // Если здание разрушено (buildingAtIntermediateTarget не найден) и мы близки к цели,
-              // принудительно переключаемся на следующую промежуточную цель
-              if (
-                !buildingAtIntermediateTarget &&
-                distanceToTarget <= updatedUnit.attackRange
-              ) {
-                // Промежуточная цель была позицией здания, но здание разрушено
-                // Переключаемся на следующую промежуточную цель
-                const nextIndex = updatedUnit.currentIntermediateIndex! + 1;
-                if (
-                  updatedUnit.intermediateTargets &&
-                  nextIndex < updatedUnit.intermediateTargets.length
-                ) {
-                  // Есть следующая промежуточная цель
-                  return {
-                    ...updatedUnit,
-                    targetPosition: updatedUnit.intermediateTargets[nextIndex],
-                    currentIntermediateIndex: nextIndex,
-                  };
-                } else if (updatedUnit.finalTarget) {
-                  // Все промежуточные цели пройдены, переключаемся на финальную
-                  return {
-                    ...updatedUnit,
-                    targetPosition: updatedUnit.finalTarget,
-                    currentIntermediateIndex: undefined,
-                    hasReachedIntermediate: true,
-                  };
-                }
-                // Если нет ни промежуточных, ни финальной цели, продолжаем движение
-              }
-
-              // Если есть враг в радиусе атаки - атакуем его, но не меняем целевую позицию
-              if (enemyUnit) {
-                const distance = getDistance(
-                  updatedUnit.position,
-                  enemyUnit.position
-                );
-                if (distance <= updatedUnit.attackRange) {
-                  // Враг в радиусе атаки - можем атаковать, но продолжаем двигаться к промежуточной цели
-                  const optimalDistance = updatedUnit.attackRange * 0.6; // 60% от максимального радиуса
-                  if (distance > optimalDistance) {
-                    // Подходим ближе, но сохраняем промежуточную цель
-                    // Временно двигаемся к врагу, но промежуточные цели сохранятся
-                    return moveUnit(updatedUnit, deltaTime);
-                  }
-                  // На оптимальной дистанции - останавливаемся для атаки, но промежуточные цели сохраняются
-                  const isRangedForIntermediate = updatedUnit.attackRange > 80;
-                  const meleeDistanceForIntermediate = 35; // Увеличена с 20px до 35px
-                  if (isRangedForIntermediate) {
-                    return { ...updatedUnit, isMoving: false };
-                  } else {
-                    // Для ближнего боя проверяем, достигли ли meleeDistance
-                    if (distance <= meleeDistanceForIntermediate) {
-                      return { ...updatedUnit, isMoving: false };
-                    } else {
-                      // Еще не достигли meleeDistance, продолжаем движение
-                      return moveUnit(updatedUnit, deltaTime);
-                    }
-                  }
-                }
-              }
-
-              // Если есть здание в радиусе атаки - атакуем его
-              if (enemyBuilding) {
-                const distance = getDistance(
-                  updatedUnit.position,
-                  enemyBuilding.position
-                );
-                if (
-                  distance <= updatedUnit.attackRange &&
-                  !lineCrossesImpassable(
-                    updatedUnit.position,
-                    enemyBuilding.position
-                  )
-                ) {
-                  // Здание в радиусе атаки - атакуем, но промежуточные цели сохраняются
-                  return updatedUnit;
-                }
-              }
-
-              // Продолжаем движение к промежуточной цели
-              let movedUnit = moveUnit(updatedUnit, deltaTime);
-
-              // Проверяем, не переключился ли юнит преждевременно на следующую промежуточную цель
-              // Если текущая промежуточная цель была позицией живого здания, откатываем переключение
-              if (
-                hasIntermediateTargets &&
-                movedUnit.currentIntermediateIndex !== undefined &&
-                movedUnit.currentIntermediateIndex >
-                  updatedUnit.currentIntermediateIndex! &&
-                updatedUnit.currentIntermediateIndex !== undefined
-              ) {
-                const previousIntermediateIndex =
-                  updatedUnit.currentIntermediateIndex;
-                const previousIntermediateTarget =
-                  updatedUnit.intermediateTargets![previousIntermediateIndex];
-
-                // Проверяем, является ли предыдущая промежуточная цель позицией живого здания
-                const buildingAtPreviousTarget = allEnemyBuildings.find(
-                  (building) => {
-                    const distance = getDistance(
-                      building.position,
-                      previousIntermediateTarget
-                    );
-                    return distance < 50;
-                  }
-                );
-
-                // Если предыдущая промежуточная цель - это позиция живого здания, откатываем переключение
-                // Но только если здание еще живое!
-                if (buildingAtPreviousTarget) {
-                  const distanceToPreviousTarget = getDistance(
-                    movedUnit.position,
-                    previousIntermediateTarget
-                  );
-
-                  // Если юнит все еще близко к предыдущей цели (в радиусе атаки), остаемся на ней
-                  if (distanceToPreviousTarget <= movedUnit.attackRange) {
-                    return {
-                      ...movedUnit,
-                      targetPosition: previousIntermediateTarget,
-                      currentIntermediateIndex: previousIntermediateIndex,
-                    };
-                  }
-                }
-                // Если здание разрушено (buildingAtPreviousTarget не найден), разрешаем переключение
-              }
-
-              return movedUnit;
-            }
-
-            // Приоритет атаке юнитов (если нет промежуточных целей)
-            if (enemyUnit) {
-              const distance = getDistance(
-                updatedUnit.position,
-                enemyUnit.position
-              );
-              const isRanged = updatedUnit.attackRange > 80;
-              const meleeDistance = 35; // Увеличена с 20px до 35px
-
-              if (distance <= updatedUnit.attackRange) {
-                // Находимся в радиусе атаки
-                if (isRanged) {
-                  // Дальнобойные юниты - останавливаемся на оптимальной дистанции
-                  const optimalDistance = updatedUnit.attackRange * 0.6; // 60% от максимального радиуса
-                  if (distance > optimalDistance) {
-                    // Подходим ближе к врагу для атаки
-                    return moveUnit(
-                      {
-                        ...updatedUnit,
-                        targetPosition: enemyUnit.position,
-                        isMoving: true,
-                      },
-                      deltaTime
-                    );
-                  }
-                  // На оптимальной дистанции - останавливаемся
-                  return { ...updatedUnit, isMoving: false };
-                } else {
-                  // Ближний бой - подходим вплотную до meleeDistance
-                  if (distance > meleeDistance) {
-                    // Подходим ближе
-                    return moveUnit(
-                      {
-                        ...updatedUnit,
-                        targetPosition: enemyUnit.position,
-                        isMoving: true,
-                      },
-                      deltaTime
-                    );
-                  }
-                  // Вплотную - останавливаемся
-                  return { ...updatedUnit, isMoving: false };
-                }
-              } else {
-                // Двигаемся к врагу
-                return moveUnit(
-                  {
-                    ...updatedUnit,
-                    targetPosition: enemyUnit.position,
-                    isMoving: true,
-                  },
-                  deltaTime
-                );
-              }
-            }
-
-            // Если нет врагов-юнитов, атакуем здания
-            if (enemyBuilding) {
-              const distance = getDistance(
-                updatedUnit.position,
-                enemyBuilding.position
-              );
-              if (distance <= updatedUnit.attackRange) {
-                // Проверяем, не блокирует ли непроходимый ландшафт линию атаки
-                if (
-                  !lineCrossesImpassable(
-                    updatedUnit.position,
-                    enemyBuilding.position
-                  )
-                ) {
-                  // Находимся в радиусе атаки здания и можем атаковать
-                  return updatedUnit;
-                } else {
-                  // Ландшафт блокирует атаку, пытаемся подойти ближе
-                  return moveUnit(
-                    {
-                      ...updatedUnit,
-                      targetPosition: enemyBuilding.position,
-                    },
-                    deltaTime
-                  );
-                }
-              } else {
-                // Двигаемся к зданию
-                return moveUnit(
-                  {
-                    ...updatedUnit,
-                    targetPosition: enemyBuilding.position,
-                  },
-                  deltaTime
-                );
-              }
-            }
-
-            // Если нет вражеских юнитов и зданий, проверяем текущую цель
-            if (updatedUnit.targetPosition) {
-              // Проверяем, есть ли живое здание в текущей цели
-              const buildingAtTarget = allEnemyBuildings.find((building) => {
-                const distance = getDistance(
-                  building.position,
-                  updatedUnit.targetPosition!
-                );
-                return distance < 50; // Здание считается в этой позиции, если близко
-              });
-
-              if (buildingAtTarget) {
-                // Цель еще существует, идем к ней
-                return moveUnit(updatedUnit, deltaTime);
-              } else {
-                // Цель разрушена, находим новую
-                const nextTarget = getNextTarget(
-                  updatedUnit.playerId,
-                  updatedUnit.targetPosition,
-                  allEnemyBuildings,
-                  GAME_CONFIG.mapSize,
-                  updatedUnit.barrackIndex
-                );
-                return moveUnit(
-                  { ...updatedUnit, targetPosition: nextTarget },
-                  deltaTime
-                );
-              }
-            } else {
-              // Нет цели, находим новую
-              const nextTarget = getNextTarget(
-                updatedUnit.playerId,
-                undefined,
-                allEnemyBuildings,
-                GAME_CONFIG.mapSize,
-                updatedUnit.barrackIndex
-              );
-              return moveUnit(
-                { ...updatedUnit, targetPosition: nextTarget },
-                deltaTime
-              );
-            }
-
-            return updatedUnit;
+            // Используем модуль движения
+            return processUnitMovement({
+              unit,
+              allUnits: allCurrentUnits,
+              allEnemyBuildings,
+              deltaTime,
+              now,
+            });
           });
 
           // Применяем отталкивание юнитов друг от друга
@@ -470,407 +120,72 @@ export function useGameState() {
           };
         });
 
-        // Применяем урон от атак (проверяем каждый кадр для каждого юнита отдельно)
-        const attackInterval = 1500; // 1.5 секунды между атаками
-
         // Сохраняем исходные юниты ДО обновления движения для проверки дистанции атаки
         const originalUnitsList = prev.players
           .flatMap((p) => p.units)
           .filter((u) => u.health > 0);
 
-        // Создаем карту всех юнитов для быстрого доступа
-        // allUnitsList содержит юниты ПОСЛЕ обновления движения (с isMoving: false, если они остановились)
+        // Получаем обновленные юниты после движения
         const allUnitsList = newState.players
           .flatMap((p) => p.units)
           .filter((u) => u.health > 0);
-        const attackedUnits = new Set<string>(); // Отслеживаем атакованные юниты
 
-        // Создаем карту обновленных юнитов (для хранения изменений в секции атаки)
-        const unitsMap = new Map<string, Unit>();
-        // Отслеживаем убийства для начисления золота: Map<playerId, totalGold>
-        const killRewards = new Map<PlayerId, number>();
+        // Обрабатываем атаки между юнитами
+        const combatResult = processUnitCombat(
+          allUnitsList,
+          originalUnitsList,
+          now
+        );
 
-        // Собираем статистику боя отдельно, чтобы применять её корректно
-        const statsUpdates = new Map<
-          PlayerId,
-          {
-            unitsKilled: number;
-            unitsLost: number;
-            damageDealt: number;
-            damageTaken: number;
-            goldEarned: number;
-          }
-        >();
+        // Обрабатываем атаки зданий по юнитам
+        const allBuildings = newState.players.flatMap((p) => [
+          p.castle,
+          ...p.barracks,
+          ...p.towers,
+        ]);
+        const buildingAttacks = processBuildingAttacks(
+          allBuildings,
+          allUnitsList,
+          now
+        );
 
-        // Инициализируем статистику для всех игроков
-        newState.players.forEach((player) => {
-          statsUpdates.set(player.id, {
-            unitsKilled: 0,
-            unitsLost: 0,
-            damageDealt: 0,
-            damageTaken: 0,
-            goldEarned: 0,
-          });
-        });
-
-        // Обрабатываем атаки между юнитами (только для тех, кто в радиусе атаки и не двигается)
-        // ВАЖНО: allUnitsList уже содержит обновленные юниты после движения (с isMoving: false, если остановились)
-        // Используем обновленные юниты из allUnitsList для проверки isMoving и поиска врагов
-        const allUnitsForAttack = allUnitsList;
-
-        // Проходим по всем юнитам для проверки атак
-        allUnitsForAttack.forEach((updatedUnit) => {
-          if (updatedUnit.health <= 0 || attackedUnits.has(updatedUnit.id))
-            return;
-          if (updatedUnit.isMoving) return; // Не атакуем, если двигаемся
-
-          const canAttack =
-            !updatedUnit.lastAttackTime ||
-            now - updatedUnit.lastAttackTime >= attackInterval;
-          if (!canAttack) return;
-
-          // Используем обновленные позиции для поиска врагов (из unitsMap, если есть)
-          const updatedEnemyUnits = allUnitsForAttack.filter(
-            (u) =>
-              u.playerId !== updatedUnit.playerId &&
-              !attackedUnits.has(u.id) &&
-              u.health > 0
-          );
-          const enemy = findNearestEnemy(updatedUnit, updatedEnemyUnits);
-
-          if (enemy) {
-            // ВАЖНО: Используем обновленные позиции для проверки дистанции
-            // Это гарантирует, что мы проверяем актуальную дистанцию после движения и отталкивания
-            const attackDistance = getDistance(
-              updatedUnit.position,
-              enemy.position
-            );
-
-            // Для проверки "был ли жив" используем исходные версии
-            const originalUnit =
-              originalUnitsList.find((u) => u.id === updatedUnit.id) ||
-              updatedUnit;
-            const originalEnemy =
-              originalUnitsList.find((u) => u.id === enemy.id) || enemy;
-
-            // Проверяем, можем ли МЫ атаковать (в своем радиусе атаки)
-            // Для дальнобойных (лучники, маги) используем attackRange
-            // Для ближних (воины) используем meleeDistance (35px - увеличенная дистанция для компенсации отталкивания)
-            const isRanged = originalUnit.attackRange > 80;
-            const meleeDistance = 35; // Увеличена с 20px до 35px
-            const canWeAttack = isRanged
-              ? attackDistance <= originalUnit.attackRange
-              : attackDistance <= meleeDistance;
-
-            // НЕ атакуем, если не в своей дистанции атаки
-            if (!canWeAttack) return;
-
-            // Проверяем, не блокирует ли непроходимый ландшафт линию атаки
-            if (
-              lineCrossesImpassable(
-                originalUnit.position,
-                originalEnemy.position
-              )
-            ) {
-              return;
-            }
-
-            // Проверяем, может ли ВРАГ также атаковать нас (в его радиусе атаки)
-            const enemyIsRanged = originalEnemy.attackRange > 80;
-            const enemyMeleeDistance = 35; // Увеличена с 20px до 35px
-            const canEnemyAttack = enemyIsRanged
-              ? attackDistance <= originalEnemy.attackRange
-              : attackDistance <= enemyMeleeDistance;
-
-            // Применяем урон врагу (используем обновленные версии из unitsMap, если есть)
-            const currentEnemyForDamage = unitsMap.get(enemy.id) || enemy;
-            const damagedEnemy = damageUnit(
-              currentEnemyForDamage,
-              updatedUnit.attack
-            );
-
-            // Взаимный урон применяем только если ВРАГ тоже может атаковать в СВОЕМ радиусе
-            // Если враг не может атаковать (например, воин на расстоянии 100px от лучника),
-            // то урон наносит только атакующий юнит
-            const currentUnitForDamage =
-              unitsMap.get(updatedUnit.id) || updatedUnit;
-            const damagedUnit = canEnemyAttack
-              ? damageUnit(currentUnitForDamage, originalEnemy.attack)
-              : currentUnitForDamage;
-
-            // Проверяем, были ли юниты живы ДО этой атаки (используем исходные версии)
-            const enemyWasAlive = originalEnemy.health > 0;
-            const unitWasAlive = originalUnit.health > 0;
-
-            // Обновляем нанесенный/полученный урон
-            const actualEnemyDamage = Math.max(
-              1,
-              Math.floor(
-                updatedUnit.attack - (currentEnemyForDamage.defense || 0)
-              )
-            );
-            // Урон по нашему юниту применяется только если враг может атаковать
-            const actualUnitDamage = canEnemyAttack
-              ? Math.max(
-                  1,
-                  Math.floor(
-                    originalEnemy.attack - (currentUnitForDamage.defense || 0)
-                  )
-                )
-              : 0;
-
-            const attackerStats = statsUpdates.get(updatedUnit.playerId)!;
-            attackerStats.damageDealt += actualEnemyDamage;
-            attackerStats.damageTaken += actualUnitDamage;
-
-            const defenderStats = statsUpdates.get(enemy.playerId)!;
-            defenderStats.damageDealt += actualUnitDamage;
-            defenderStats.damageTaken += actualEnemyDamage;
-
-            // Если враг был жив до атаки, а теперь мертв - начисляем золото за убийство
-            if (enemyWasAlive && damagedEnemy.health <= 0) {
-              const reward = GAME_CONFIG.killReward[damagedEnemy.type];
-              const currentReward = killRewards.get(updatedUnit.playerId) || 0;
-              killRewards.set(updatedUnit.playerId, currentReward + reward);
-
-              attackerStats.unitsKilled += 1;
-              attackerStats.goldEarned += reward;
-              defenderStats.unitsLost += 1;
-            }
-
-            // Если наш юнит был жив до атаки, а теперь мертв - начисляем золото врагу
-            if (unitWasAlive && damagedUnit.health <= 0) {
-              const reward = GAME_CONFIG.killReward[damagedUnit.type];
-              const currentReward = killRewards.get(enemy.playerId) || 0;
-              killRewards.set(enemy.playerId, currentReward + reward);
-
-              defenderStats.unitsKilled += 1;
-              defenderStats.goldEarned += reward;
-              attackerStats.unitsLost += 1;
-            }
-
-            // Сохраняем обновленных юнитов
-            unitsMap.set(enemy.id, {
-              ...damagedEnemy,
-              isAttacking: true,
-              lastAttackTime: now,
-              attackTarget: updatedUnit.position,
-            });
-            unitsMap.set(updatedUnit.id, {
-              ...damagedUnit,
-              isAttacking: canEnemyAttack, // isAttacking только если враг тоже атакует
-              lastAttackTime: now,
-              attackTarget: enemy.position,
-            });
-
-            // Помечаем обоих как атакованных, чтобы избежать двойной атаки в этом цикле
-            attackedUnits.add(updatedUnit.id);
-            attackedUnits.add(enemy.id);
-          }
-        });
-
-        // Применяем обновления ко всем игрокам и начисляем золото за убийства
-        // ВАЖНО: Применяем обновления всегда, даже если unitsMap пуст, чтобы обновить статистику и золото
-        newState.players = newState.players.map((player) => {
-          if (!player.isActive) return player;
-
-          // Получаем награду за убийства для этого игрока
-          const reward = killRewards.get(player.id) || 0;
-          const statsUpdate = statsUpdates.get(player.id)!;
-
-          // Применяем обновления юнитов из unitsMap (если есть)
-          const updatedUnits = player.units
-            .map((unit) => {
-              const updated = unitsMap.get(unit.id);
-              return updated || unit;
-            })
-            .filter((u) => u.health > 0); // Удаляем мертвых юнитов
-
-          // Обновляем только если есть изменения (урон, золото, статистика)
-          if (
-            unitsMap.size > 0 ||
-            reward > 0 ||
-            statsUpdate.unitsKilled > 0 ||
-            statsUpdate.unitsLost > 0 ||
-            statsUpdate.damageDealt > 0 ||
-            statsUpdate.damageTaken > 0 ||
-            statsUpdate.goldEarned > 0
-          ) {
-            return {
-              ...player,
-              gold: player.gold + reward,
-              stats: {
-                unitsKilled: player.stats.unitsKilled + statsUpdate.unitsKilled,
-                unitsLost: player.stats.unitsLost + statsUpdate.unitsLost,
-                buildingsDestroyed: player.stats.buildingsDestroyed,
-                buildingsLost: player.stats.buildingsLost,
-                damageDealt: player.stats.damageDealt + statsUpdate.damageDealt,
-                damageTaken: player.stats.damageTaken + statsUpdate.damageTaken,
-                goldEarned: player.stats.goldEarned + statsUpdate.goldEarned,
-              },
-              units: updatedUnits,
-            };
-          }
-
-          // Если нет изменений, возвращаем игрока как есть
-          return player;
-        });
-
-        // Обрабатываем атаки зданий по юнитам (башни и замки атакуют вражеских юнитов)
-        const buildingAttackInterval = 1000; // 1 секунда между атаками зданий
-
-        newState.players = newState.players.map((player) => {
-          if (!player.isActive) return player;
-
-          const allUnitsForBuildingAttack = newState.players
-            .flatMap((p) => p.units)
-            .filter((u) => u.health > 0);
-
-          return {
-            ...player,
-            castle: (() => {
-              if (
-                player.castle.health <= 0 ||
-                !player.castle.attack ||
-                !player.castle.attackRange
-              ) {
-                return { ...player.castle, attackTarget: undefined };
-              }
-
-              const canAttack =
-                !player.castle.lastAttackTime ||
-                now - player.castle.lastAttackTime >= buildingAttackInterval;
-              if (!canAttack) return player.castle;
-
-              const nearestEnemy = findNearestEnemyUnitForBuilding(
-                player.castle,
-                allUnitsForBuildingAttack
-              );
-              if (!nearestEnemy) {
-                return { ...player.castle, attackTarget: undefined };
-              }
-
-              const distance = getDistance(
-                player.castle.position,
-                nearestEnemy.position
-              );
-              if (
-                distance <= player.castle.attackRange &&
-                !lineCrossesImpassable(
-                  player.castle.position,
-                  nearestEnemy.position
-                )
-              ) {
-                // Наносим урон вражескому юниту
-                const damagedEnemy = damageUnit(
-                  nearestEnemy,
-                  player.castle.attack
-                );
-                const actualDamage = Math.max(
-                  1,
-                  Math.floor(player.castle.attack - (nearestEnemy.defense || 0))
-                );
-
-                // Обновляем юнит напрямую
-                const enemyPlayerIndex = newState.players.findIndex(
-                  (p) => p.id === nearestEnemy.playerId
-                );
-                if (enemyPlayerIndex !== -1) {
-                  const unitIndex = newState.players[
-                    enemyPlayerIndex
-                  ].units.findIndex((u) => u.id === nearestEnemy.id);
-                  if (unitIndex !== -1) {
-                    newState.players[enemyPlayerIndex].units[unitIndex] = {
-                      ...damagedEnemy,
-                      health: Math.max(0, damagedEnemy.health),
-                    };
-                  }
-                }
-
-                // Обновляем статистику
-                const attackerStats = statsUpdates.get(player.id)!;
-                attackerStats.damageDealt += actualDamage;
-                const defenderStats = statsUpdates.get(nearestEnemy.playerId)!;
-                defenderStats.damageTaken += actualDamage;
-
-                return {
-                  ...player.castle,
-                  lastAttackTime: now,
-                  attackTarget: nearestEnemy.position,
-                };
-              }
-
-              return { ...player.castle, attackTarget: undefined };
-            })(),
-            towers: player.towers.map((tower) => {
-              if (tower.health <= 0 || !tower.attack || !tower.attackRange) {
-                return { ...tower, attackTarget: undefined };
-              }
-
-              const canAttack =
-                !tower.lastAttackTime ||
-                now - tower.lastAttackTime >= buildingAttackInterval;
-              if (!canAttack) return tower;
-
-              const nearestEnemy = findNearestEnemyUnitForBuilding(
-                tower,
-                allUnitsForBuildingAttack
-              );
-              if (!nearestEnemy) {
-                return { ...tower, attackTarget: undefined };
-              }
-
-              const distance = getDistance(
-                tower.position,
-                nearestEnemy.position
-              );
-              if (
-                distance <= tower.attackRange &&
-                !lineCrossesImpassable(tower.position, nearestEnemy.position)
-              ) {
-                // Наносим урон вражескому юниту
-                const damagedEnemy = damageUnit(nearestEnemy, tower.attack);
-                const actualDamage = Math.max(
-                  1,
-                  Math.floor(tower.attack - (nearestEnemy.defense || 0))
-                );
-
-                // Обновляем юнит напрямую
-                const enemyPlayerIndex = newState.players.findIndex(
-                  (p) => p.id === nearestEnemy.playerId
-                );
-                if (enemyPlayerIndex !== -1) {
-                  const unitIndex = newState.players[
-                    enemyPlayerIndex
-                  ].units.findIndex((u) => u.id === nearestEnemy.id);
-                  if (unitIndex !== -1) {
-                    newState.players[enemyPlayerIndex].units[unitIndex] = {
-                      ...damagedEnemy,
-                      health: Math.max(0, damagedEnemy.health),
-                    };
-                  }
-                }
-
-                // Обновляем статистику
-                const attackerStats = statsUpdates.get(player.id)!;
-                attackerStats.damageDealt += actualDamage;
-                const defenderStats = statsUpdates.get(nearestEnemy.playerId)!;
-                defenderStats.damageTaken += actualDamage;
-
-                return {
-                  ...tower,
-                  lastAttackTime: now,
-                  attackTarget: nearestEnemy.position,
-                };
-              }
-
-              return { ...tower, attackTarget: undefined };
-            }),
-          };
+        // Объединяем обновления юнитов из боевой системы и атак зданий
+        buildingAttacks.updatedUnits.forEach((unit, id) => {
+          combatResult.unitsMap.set(id, unit);
         });
 
         // Обрабатываем атаки юнитов по зданиям
-        // Собираем статистику разрушенных зданий и урона по зданиям
+        const unitsAttackingBuildings = new Map<string, Unit>();
+        combatResult.unitsMap.forEach((unit, id) => {
+          unitsAttackingBuildings.set(id, unit);
+        });
+        const unitBuildingAttacks = processUnitAttacksOnBuildings(
+          allBuildings,
+          allUnitsList,
+          unitsAttackingBuildings,
+          now
+        );
+
+        // Объединяем все обновления зданий
+        const buildingsMap = new Map<string, Building>();
+        buildingAttacks.updatedBuildings.forEach((building, id) => {
+          buildingsMap.set(id, building);
+        });
+        unitBuildingAttacks.updatedBuildings.forEach((building, id) => {
+          buildingsMap.set(id, building);
+        });
+
+        // Объединяем обновления юнитов из атак по зданиям
+        unitBuildingAttacks.updatedUnits.forEach((unit, id) => {
+          const existing = combatResult.unitsMap.get(id);
+          if (existing) {
+            combatResult.unitsMap.set(id, { ...existing, ...unit });
+          } else {
+            combatResult.unitsMap.set(id, unit);
+          }
+        });
+
+        // Собираем статистику разрушенных зданий
         const destroyedBuildings = new Map<
           string,
           {
@@ -880,288 +195,75 @@ export function useGameState() {
           }
         >();
 
-        // Статистика урона по зданиям
-        const buildingDamageStats = new Map<
-          PlayerId,
-          {
-            damageDealt: number;
-            damageTaken: number;
+        // Проверяем разрушенные здания
+        const prevBuildings = prev.players.flatMap((p) => [
+          p.castle,
+          ...p.barracks,
+          ...p.towers,
+        ]);
+        prevBuildings.forEach((prevBuilding) => {
+          const currentBuilding = buildingsMap.get(prevBuilding.id);
+          if (
+            prevBuilding.health > 0 &&
+            currentBuilding &&
+            currentBuilding.health <= 0
+          ) {
+            // Здание было разрушено
+            const owner = newState.players.find(
+              (p) =>
+                p.castle.id === prevBuilding.id ||
+                p.barracks.some((b) => b.id === prevBuilding.id) ||
+                p.towers.some((t) => t.id === prevBuilding.id)
+            );
+            if (owner) {
+              // Находим атакующих
+              const attackers = new Set<PlayerId>();
+              allUnitsList.forEach((unit) => {
+                if (unit.playerId !== owner.id) {
+                  const distance = getDistance(
+                    unit.position,
+                    prevBuilding.position
+                  );
+                  if (
+                    distance < COMBAT_CONSTANTS.UNIT_ATTACK_BUILDING_DISTANCE
+                  ) {
+                    attackers.add(unit.playerId);
+                  }
+                }
+              });
+              destroyedBuildings.set(prevBuilding.id, {
+                ownerId: owner.id,
+                attackerIds: attackers,
+                buildingType: prevBuilding.type,
+              });
+            }
           }
-        >();
-
-        // Инициализируем статистику урона по зданиям
-        newState.players.forEach((player) => {
-          buildingDamageStats.set(player.id, {
-            damageDealt: 0,
-            damageTaken: 0,
-          });
         });
 
-        // Создаем карту для обновления lastAttackTime юнитов, атакующих здания
-        const unitsAttackingBuildings = new Map<string, Unit>();
-
-        newState.players = newState.players.map((player) => {
-          if (!player.isActive) return player;
-
-          return {
-            ...player,
-            castle: (() => {
-              // Используем обновленных юнитов из unitsMap, если они там есть
-              const allEnemyUnits = newState.players
-                .filter((p) => p.id !== player.id && p.isActive)
-                .flatMap((p) => p.units)
-                .filter((u) => u.health > 0)
-                .map((u) => unitsMap.get(u.id) || u);
-
-              let castle = player.castle;
-              const wasAlive = castle.health > 0;
-              const buildingId = castle.id;
-
-              allEnemyUnits.forEach((enemyUnit) => {
-                // Проверяем, может ли юнит атаковать (прошло достаточно времени с последней атаки)
-                const canAttack =
-                  !enemyUnit.lastAttackTime ||
-                  now - enemyUnit.lastAttackTime >= attackInterval;
-                if (!canAttack) return;
-
-                const distance = getDistance(
-                  enemyUnit.position,
-                  castle.position
-                );
-                if (
-                  distance < 60 &&
-                  !lineCrossesImpassable(enemyUnit.position, castle.position)
-                ) {
-                  const oldHealth = castle.health;
-                  castle = damageBuilding(castle, enemyUnit.attack);
-                  const damage = Math.max(0, oldHealth - castle.health);
-
-                  // Сохраняем статистику урона и обновляем lastAttackTime
-                  if (damage > 0) {
-                    const attackerStats = buildingDamageStats.get(
-                      enemyUnit.playerId
-                    )!;
-                    attackerStats.damageDealt += damage;
-                    const defenderStats = buildingDamageStats.get(player.id)!;
-                    defenderStats.damageTaken += damage;
-
-                    // Обновляем lastAttackTime для этого юнита
-                    unitsAttackingBuildings.set(enemyUnit.id, {
-                      ...enemyUnit,
-                      lastAttackTime: now,
-                    });
-                  }
-                }
-              });
-
-              // Если замок был жив, а теперь разрушен - запоминаем для статистики
-              if (wasAlive && castle.health <= 0) {
-                const attackers = new Set<PlayerId>();
-                allEnemyUnits.forEach((enemyUnit) => {
-                  const distance = getDistance(
-                    enemyUnit.position,
-                    castle.position
-                  );
-                  if (distance < 60) {
-                    attackers.add(enemyUnit.playerId);
-                  }
-                });
-                destroyedBuildings.set(buildingId, {
-                  ownerId: player.id,
-                  attackerIds: attackers,
-                  buildingType: "castle",
-                });
-              }
-
-              return castle;
-            })(),
-            barracks: player.barracks.map((barrack) => {
-              // Используем обновленных юнитов из unitsMap, если они там есть
-              const allEnemyUnits = newState.players
-                .filter((p) => p.id !== player.id && p.isActive)
-                .flatMap((p) => p.units)
-                .filter((u) => u.health > 0)
-                .map(
-                  (u) =>
-                    unitsAttackingBuildings.get(u.id) || unitsMap.get(u.id) || u
-                );
-
-              let updatedBarrack = barrack;
-              const wasAlive = barrack.health > 0;
-              const buildingId = barrack.id;
-
-              allEnemyUnits.forEach((enemyUnit) => {
-                // Проверяем, может ли юнит атаковать (прошло достаточно времени с последней атаки)
-                const canAttack =
-                  !enemyUnit.lastAttackTime ||
-                  now - enemyUnit.lastAttackTime >= attackInterval;
-                if (!canAttack) return;
-
-                const distance = getDistance(
-                  enemyUnit.position,
-                  barrack.position
-                );
-                if (
-                  distance < 60 &&
-                  !lineCrossesImpassable(enemyUnit.position, barrack.position)
-                ) {
-                  const oldHealth = updatedBarrack.health;
-                  updatedBarrack = damageBuilding(
-                    updatedBarrack,
-                    enemyUnit.attack
-                  );
-                  const damage = Math.max(0, oldHealth - updatedBarrack.health);
-
-                  // Сохраняем статистику урона и обновляем lastAttackTime
-                  if (damage > 0) {
-                    const attackerStats = buildingDamageStats.get(
-                      enemyUnit.playerId
-                    )!;
-                    attackerStats.damageDealt += damage;
-                    const defenderStats = buildingDamageStats.get(player.id)!;
-                    defenderStats.damageTaken += damage;
-
-                    // Обновляем lastAttackTime для этого юнита
-                    unitsAttackingBuildings.set(enemyUnit.id, {
-                      ...enemyUnit,
-                      lastAttackTime: now,
-                    });
-                  }
-                }
-              });
-
-              // Если барак был жив, а теперь разрушен - запоминаем для статистики
-              if (wasAlive && updatedBarrack.health <= 0) {
-                const attackers = new Set<PlayerId>();
-                allEnemyUnits.forEach((enemyUnit) => {
-                  const distance = getDistance(
-                    enemyUnit.position,
-                    barrack.position
-                  );
-                  if (distance < 60) {
-                    attackers.add(enemyUnit.playerId);
-                  }
-                });
-                destroyedBuildings.set(buildingId, {
-                  ownerId: player.id,
-                  attackerIds: attackers,
-                  buildingType: "barracks",
-                });
-              }
-
-              return updatedBarrack;
-            }),
-            towers: player.towers.map((tower) => {
-              // Используем обновленных юнитов из unitsMap, если они там есть
-              const allEnemyUnits = newState.players
-                .filter((p) => p.id !== player.id && p.isActive)
-                .flatMap((p) => p.units)
-                .filter((u) => u.health > 0)
-                .map(
-                  (u) =>
-                    unitsAttackingBuildings.get(u.id) || unitsMap.get(u.id) || u
-                );
-
-              let updatedTower = tower;
-              const wasAlive = tower.health > 0;
-              const buildingId = tower.id;
-
-              allEnemyUnits.forEach((enemyUnit) => {
-                // Проверяем, может ли юнит атаковать (прошло достаточно времени с последней атаки)
-                const canAttack =
-                  !enemyUnit.lastAttackTime ||
-                  now - enemyUnit.lastAttackTime >= attackInterval;
-                if (!canAttack) return;
-
-                const distance = getDistance(
-                  enemyUnit.position,
-                  tower.position
-                );
-                if (
-                  distance < 60 &&
-                  !lineCrossesImpassable(enemyUnit.position, tower.position)
-                ) {
-                  const oldHealth = updatedTower.health;
-                  updatedTower = damageBuilding(updatedTower, enemyUnit.attack);
-                  const damage = Math.max(0, oldHealth - updatedTower.health);
-
-                  // Сохраняем статистику урона и обновляем lastAttackTime
-                  if (damage > 0) {
-                    const attackerStats = buildingDamageStats.get(
-                      enemyUnit.playerId
-                    )!;
-                    attackerStats.damageDealt += damage;
-                    const defenderStats = buildingDamageStats.get(player.id)!;
-                    defenderStats.damageTaken += damage;
-
-                    // Обновляем lastAttackTime для этого юнита
-                    unitsAttackingBuildings.set(enemyUnit.id, {
-                      ...enemyUnit,
-                      lastAttackTime: now,
-                    });
-                  }
-                }
-              });
-
-              // Если башня была жива, а теперь разрушена - запоминаем для статистики
-              if (wasAlive && updatedTower.health <= 0) {
-                const attackers = new Set<PlayerId>();
-                allEnemyUnits.forEach((enemyUnit) => {
-                  const distance = getDistance(
-                    enemyUnit.position,
-                    tower.position
-                  );
-                  if (distance < 60) {
-                    attackers.add(enemyUnit.playerId);
-                  }
-                });
-                destroyedBuildings.set(buildingId, {
-                  ownerId: player.id,
-                  attackerIds: attackers,
-                  buildingType: "tower",
-                });
-              }
-
-              return updatedTower;
-            }),
-          };
+        // Применяем все обновления к состоянию
+        newState = applyStateUpdates(newState, {
+          unitsMap: combatResult.unitsMap,
+          buildingsMap,
+          killRewards: combatResult.killRewards,
+          statsUpdates: combatResult.statsUpdates,
         });
 
-        // Применяем обновления lastAttackTime для юнитов, атаковавших здания
-        if (unitsAttackingBuildings.size > 0) {
-          newState.players = newState.players.map((player) => ({
-            ...player,
-            units: player.units.map((unit) => {
-              const updated = unitsAttackingBuildings.get(unit.id);
-              return updated || unit;
-            }),
-          }));
-        }
-
-        // Применяем статистику разрушенных зданий и урона по зданиям, начисляем золото
-        if (destroyedBuildings.size > 0 || buildingDamageStats.size > 0) {
-          // Создаем карту наград за разрушенные здания
+        // Обрабатываем статистику разрушенных зданий и начисляем золото
+        if (destroyedBuildings.size > 0) {
           const buildingRewards = new Map<PlayerId, number>();
 
-          // Собираем информацию о разрушенных зданиях для начисления наград
           destroyedBuildings.forEach(
             ({ ownerId, attackerIds, buildingType }) => {
               const reward = GAME_CONFIG.buildingDestroyReward[buildingType];
-              if (reward) {
-                // Награду получают все атакующие игроки (разделяем поровну)
-                const attackerArray = Array.from(attackerIds);
-                if (attackerArray.length > 0) {
-                  const rewardPerPlayer = Math.floor(
-                    reward / attackerArray.length
+              if (reward && attackerIds.size > 0) {
+                const rewardPerPlayer = Math.floor(reward / attackerIds.size);
+                attackerIds.forEach((attackerId) => {
+                  const currentReward = buildingRewards.get(attackerId) || 0;
+                  buildingRewards.set(
+                    attackerId,
+                    currentReward + rewardPerPlayer
                   );
-                  attackerArray.forEach((attackerId) => {
-                    const currentReward = buildingRewards.get(attackerId) || 0;
-                    buildingRewards.set(
-                      attackerId,
-                      currentReward + rewardPerPlayer
-                    );
-                  });
-                }
+                });
               }
             }
           );
@@ -1172,7 +274,6 @@ export function useGameState() {
             let buildingsDestroyed = 0;
             let buildingsLost = 0;
 
-            // Подсчитываем разрушенные здания для этого игрока
             destroyedBuildings.forEach(({ ownerId, attackerIds }) => {
               if (attackerIds.has(player.id)) {
                 buildingsDestroyed += 1;
@@ -1182,7 +283,6 @@ export function useGameState() {
               }
             });
 
-            const buildingDamage = buildingDamageStats.get(player.id)!;
             const reward = buildingRewards.get(player.id) || 0;
 
             return {
@@ -1193,10 +293,6 @@ export function useGameState() {
                 buildingsDestroyed:
                   player.stats.buildingsDestroyed + buildingsDestroyed,
                 buildingsLost: player.stats.buildingsLost + buildingsLost,
-                damageDealt:
-                  player.stats.damageDealt + buildingDamage.damageDealt,
-                damageTaken:
-                  player.stats.damageTaken + buildingDamage.damageTaken,
                 goldEarned: player.stats.goldEarned + reward,
               },
             };
@@ -1712,14 +808,24 @@ export function useGameState() {
             players: prev.players.map((p) => {
               if (p.id === playerId) {
                 // Рассчитываем базовые значения (без улучшений)
-                const baseCastleHealth = 3000;
-                const baseCastleAttack = 30;
-                const baseTowerHealth = 800;
-                const baseTowerAttack = 50;
-                const baseBarrackHealth = 1500;
+                const baseCastleHealth = 2000; // Уменьшено с 3000
+                const baseCastleAttack = 20; // Уменьшено с 30
+                const baseTowerHealth = 500; // Уменьшено с 800
+                const baseTowerAttack = 30; // Уменьшено с 50
+                const baseBarrackHealth = 1000; // Уменьшено с 1500
+
+                // Базовые значения защиты для каждого типа юнита
+                const baseDefenseStats = {
+                  warrior: 10,
+                  archer: 5,
+                  mage: 3,
+                };
 
                 // Если улучшаем здоровье зданий, восстанавливаем здоровье
                 const healthIncrease = stat === "buildingHealth" ? 200 : 0;
+
+                // Рассчитываем множитель защиты для юнитов
+                const defenseMultiplier = 1 + newUpgrades.defense * 0.1; // +10% за уровень
 
                 return {
                   ...p,
@@ -1752,6 +858,14 @@ export function useGameState() {
                       baseBarrackHealth + buildingHealthBonus
                     ),
                   })),
+                  // Обновляем защиту всех существующих юнитов
+                  units: p.units.map((unit) => {
+                    const baseDefense = baseDefenseStats[unit.type];
+                    return {
+                      ...unit,
+                      defense: Math.floor(baseDefense * defenseMultiplier),
+                    };
+                  }),
                 };
               }
               return p;
@@ -2117,26 +1231,20 @@ export function useGameState() {
 
     const autoUpgradeInterval = setInterval(() => {
       setGameState((prev) => {
-        // Применяем автоматическое ра        звитие ко всем игрокам
-        // Для выбранного игрока - только если autoUpgrade включен
-        // Для AI игроков (id !== 0) - всегда
-
-        const playersToUpgrade: PlayerId[] = [];
-
-        // Добавляем выбранного игрока, если autoUpgrade включен
-        if (prev.autoUpgrade && prev.selectedPlayer !== null) {
-          const selectedPlayer = prev.players[prev.selectedPlayer];
-          if (selectedPlayer && selectedPlayer.isActive) {
-            playersToUpgrade.push(prev.selectedPlayer);
-          }
-        }
-
-        // Добавляем всех AI игроков
-        prev.players.forEach((p) => {
-          if (p.id !== 0 && p.isActive && !playersToUpgrade.includes(p.id)) {
-            playersToUpgrade.push(p.id);
-          }
-        });
+        // Применяем автоматическое развитие ко всем активным игрокам
+        // Для игрока 0 (верхнего) - только если autoUpgrade включен
+        // Для остальных игроков - всегда
+        const playersToUpgrade: PlayerId[] = prev.players
+          .filter((p) => {
+            if (!p.isActive) return false;
+            // Для игрока 0 проверяем флаг autoUpgrade
+            if (p.id === 0) {
+              return prev.autoUpgrade;
+            }
+            // Для остальных игроков всегда включаем авторазвитие
+            return true;
+          })
+          .map((p) => p.id);
 
         if (playersToUpgrade.length === 0) return prev;
 
@@ -2151,6 +1259,7 @@ export function useGameState() {
           // Определяем минимальные уровни
           const castleStats: Array<keyof Player["upgrades"]> = [
             "attack",
+            "defense",
             "health",
             "goldIncome",
             "buildingHealth",
@@ -2204,6 +1313,16 @@ export function useGameState() {
                 const healthIncrease =
                   statToUpgrade === "buildingHealth" ? 200 : 0;
 
+                // Базовые значения защиты для каждого типа юнита
+                const baseDefenseStats = {
+                  warrior: 10,
+                  archer: 5,
+                  mage: 3,
+                };
+
+                // Рассчитываем множитель защиты для юнитов (если улучшаем защиту)
+                const defenseMultiplier = 1 + newUpgrades.defense * 0.1; // +10% за уровень
+
                 newState = {
                   ...newState,
                   players: newState.players.map((p) => {
@@ -2245,6 +1364,19 @@ export function useGameState() {
                           ),
                           attack: baseTowerAttack + buildingAttackBonus,
                         })),
+                        // Обновляем защиту всех существующих юнитов (если улучшаем защиту)
+                        units:
+                          statToUpgrade === "defense"
+                            ? p.units.map((unit) => {
+                                const baseDefense = baseDefenseStats[unit.type];
+                                return {
+                                  ...unit,
+                                  defense: Math.floor(
+                                    baseDefense * defenseMultiplier
+                                  ),
+                                };
+                              })
+                            : p.units,
                       };
                     }
                     return p;

@@ -72,10 +72,10 @@ export function createCastle(playerId: PlayerId, position: Position): Building {
     type: "castle",
     playerId,
     position,
-    health: 3000,
-    maxHealth: 3000,
+    health: 2000, // Уменьшено с 3000
+    maxHealth: 2000, // Уменьшено с 3000
     level: 1,
-    attack: 30,
+    attack: 20, // Уменьшено с 30
     attackRange: 50,
     defense: 15,
   };
@@ -132,8 +132,8 @@ export function createBarracks(
       type: "barracks",
       playerId,
       position: pos,
-      health: 1500,
-      maxHealth: 1500,
+      health: 1000, // Уменьшено с 1500
+      maxHealth: 1000, // Уменьшено с 1500
       level: 1,
       spawnCooldown: initialSpawnInterval, // Начальный кулдаун для первого спавна
       availableUnits: 5,
@@ -236,10 +236,10 @@ export function createTowers(
       type: "tower",
       playerId,
       position: pos,
-      health: 800,
-      maxHealth: 800,
+      health: 500, // Уменьшено с 800
+      maxHealth: 500, // Уменьшено с 800
       level: 1,
-      attack: 50, // Урон башни
+      attack: 30, // Уменьшено с 50
       attackRange: 100,
       defense: 12,
     });
