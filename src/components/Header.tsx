@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { MobileMenu } from "@/components/MobileMenu";
+import { DesktopNav } from "@/components/DesktopNav";
+import { MobileMenuButton } from "@/components/MobileMenuButton";
 
 /**
  * Варианты стилей для хедера
@@ -37,22 +40,25 @@ const headerVariants = cva("fixed w-full z-60 transition-all duration-300", {
  * @property {boolean} active - Активное состояние ссылки
  * @property {"default" | "dark"} variant - Вариант стиля ссылки
  */
-const navLinkVariants = cva("font-medium transition-colors duration-200", {
-  variants: {
-    active: {
-      true: "text-blue-600",
-      false: "text-gray-600 hover:text-blue-600",
+export const navLinkVariants = cva(
+  "font-medium transition-colors duration-200",
+  {
+    variants: {
+      active: {
+        true: "text-blue-600",
+        false: "text-gray-600 hover:text-blue-600",
+      },
+      variant: {
+        default: "",
+        dark: "text-gray-300 hover:text-white",
+      },
     },
-    variant: {
-      default: "",
-      dark: "text-gray-300 hover:text-white",
+    defaultVariants: {
+      active: false,
+      variant: "default",
     },
-  },
-  defaultVariants: {
-    active: false,
-    variant: "default",
-  },
-});
+  }
+);
 
 /**
  * Свойства компонента Header
@@ -93,6 +99,9 @@ export const Header = React.memo(
       { name: "Главная", href: "/" },
       { name: "Услуги", href: "/services" },
       { name: "Портфолио", href: "/portfolio" },
+      { name: "Создать визитку", href: "/create-card" },
+      { name: "Розыгрыш", href: "/prize-wheel" },
+      { name: "Игра", href: "/game" },
       { name: "Контакты", href: "/contact" },
     ];
 
@@ -128,99 +137,24 @@ export const Header = React.memo(
           </Link>
 
           {/* Навигация для десктопа */}
-          <nav className="hidden md:flex space-x-8" role="navigation">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  navLinkVariants({
-                    active: pathname === item.href,
-                    variant: theme === "dark" ? "dark" : "default",
-                  })
-                )}>
-                {item.name}
-              </Link>
-            ))}
-          </nav>
+          <DesktopNav navItems={navItems} theme={theme} />
 
           <div className="flex items-center space-x-4">
             <ThemeToggle />
             {/* Кнопка мобильного меню */}
-            <button
-              className="md:hidden"
-              aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
-              aria-expanded={mobileMenuOpen}
-              aria-controls="mobile-menu"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-              <span className="sr-only">
-                {mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
-              </span>
-              <div className="w-6 h-6 flex flex-col justify-center items-center">
-                <span
-                  className={cn(
-                    "block w-5 h-0.5 bg-gray-600 transition-transform duration-300 ease-in-out",
-                    mobileMenuOpen ? "rotate-45 translate-y-1" : "mb-1"
-                  )}></span>
-                <span
-                  className={cn(
-                    "block w-5 h-0.5 bg-gray-600 transition-opacity duration-300 ease-in-out",
-                    mobileMenuOpen ? "opacity-0" : ""
-                  )}></span>
-                <span
-                  className={cn(
-                    "block w-5 h-0.5 bg-gray-600 transition-transform duration-300 ease-in-out",
-                    mobileMenuOpen ? "-rotate-45 -translate-y-1" : ""
-                  )}></span>
-              </div>
-            </button>
+            <MobileMenuButton
+              mobileMenuOpen={mobileMenuOpen}
+              setMobileMenuOpen={setMobileMenuOpen}
+            />
           </div>
         </div>
 
         {/* Мобильное меню */}
-        <div
-          id="mobile-menu"
-          className={cn(
-            "md:hidden fixed inset-0 h-fit z-50 transition-all duration-300 ease-in-out",
-            mobileMenuOpen ? "opacity-100 visible" : "opacity-0 invisible"
-          )}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Мобильное меню"
-          aria-hidden={!mobileMenuOpen}>
-          <div
-            className="absolute inset-0 bg-black opacity-50 h-screen"
-            onClick={() => setMobileMenuOpen(false)}></div>
-          <div className="relative z-10 bg-white h-full flex flex-col">
-            <div className="container mx-auto px-4 py-8 flex flex-col h-full">
-              <div className="flex justify-end mb-8">
-                <button
-                  className="text-3xl font-bold text-gray-500 hover:text-gray-700"
-                  onClick={() => setMobileMenuOpen(false)}
-                  aria-label="Закрыть меню">
-                  ×
-                </button>
-              </div>
-              <nav className="flex flex-col space-y-6" role="navigation">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "text-2xl font-medium py-2",
-                      navLinkVariants({
-                        active: pathname === item.href,
-                        variant: "default",
-                      })
-                    )}
-                    onClick={() => setMobileMenuOpen(false)}>
-                    {item.name}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          </div>
-        </div>
+        <MobileMenu
+          mobileMenuOpen={mobileMenuOpen}
+          setMobileMenuOpen={setMobileMenuOpen}
+          navItems={navItems}
+        />
       </header>
     );
   }

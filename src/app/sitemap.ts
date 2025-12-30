@@ -1,25 +1,54 @@
-import { getServerSideSitemap } from "next-sitemap";
+import { MetadataRoute } from "next";
 
-export async function GET(request: Request) {
-  // Получаем URL сайта из переменной окружения или используем по умолчанию
+export default function sitemap(): MetadataRoute.Sitemap {
   const siteUrl = process.env.SITE_URL || "https://mysites.ru";
+  const currentDate = new Date().toISOString();
 
-  // Определяем статические страницы сайта
-  const staticPages = ["", "/services"];
+  // Определяем все страницы сайта
+  const routes = [
+    {
+      url: siteUrl,
+      lastModified: currentDate,
+      changeFrequency: "daily" as const,
+      priority: 1.0,
+    },
+    {
+      url: `${siteUrl}/services`,
+      lastModified: currentDate,
+      changeFrequency: "weekly" as const,
+      priority: 0.9,
+    },
+    {
+      url: `${siteUrl}/portfolio`,
+      lastModified: currentDate,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    },
+    {
+      url: `${siteUrl}/contact`,
+      lastModified: currentDate,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    },
+    {
+      url: `${siteUrl}/create-card`,
+      lastModified: currentDate,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    },
+    {
+      url: `${siteUrl}/privacy`,
+      lastModified: currentDate,
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    },
+    {
+      url: `${siteUrl}/terms`,
+      lastModified: currentDate,
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    },
+  ];
 
-  // Создаем массив сitemap записей
-  const sitemapFields = staticPages.map((path) => ({
-    loc: `${siteUrl}${path}`,
-    lastmod: new Date().toISOString(),
-    changefreq: "daily" as const,
-    priority: path === "" ? 1.0 : 0.8,
-  }));
-
-  // Возвращаем сгенерированный sitemap
-  return getServerSideSitemap(sitemapFields);
-}
-
-export default function Sitemap() {
-  // Этот компонент не будет отображаться, так как sitemap генерируется серверно
-  return null;
+  return routes;
 }

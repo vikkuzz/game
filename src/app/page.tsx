@@ -4,78 +4,11 @@ import { Section } from "@/components/Section";
 import { Heading } from "@/components/Heading";
 import { Text } from "@/components/Text";
 import { Button } from "@/components/Button";
+import { getFeaturedServices } from "@/config/services";
+import Link from "next/link";
 
 export default function Home() {
-  const services = [
-    {
-      title: "Веб-дизайн",
-      description:
-        "Создаем современные и интуитивно понятные интерфейсы для вашего бизнеса.",
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-12 w-12"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          role="img"
-          aria-label="Иконка веб-дизайна">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
-          />
-        </svg>
-      ),
-      iconColor: "blue" as const,
-    },
-    {
-      title: "Разработка",
-      description:
-        "Полный цикл разработки веб-приложений с использованием современных технологий.",
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-12 w-12"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          role="img"
-          aria-label="Иконка разработки">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-          />
-        </svg>
-      ),
-      iconColor: "green" as const,
-    },
-    {
-      title: "SEO оптимизация",
-      description: "Повышаем видимость вашего сайта в поисковых системах.",
-      icon: (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-12 w-12"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          role="img"
-          aria-label="Иконка SEO оптимизации">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-          />
-        </svg>
-      ),
-      iconColor: "purple" as const,
-    },
-  ];
+  const services = getFeaturedServices(3);
 
   return (
     <div>
@@ -87,9 +20,11 @@ export default function Home() {
           Мы создаем уникальные цифровые решения, которые помогают бизнесу расти
           и развиваться в онлайн-пространстве.
         </Text>
-        <Button size="lg" variant="primary" aria-label="Начать новый проект">
-          Начать проект
-        </Button>
+        <Link href="/contact">
+          <Button size="lg" variant="primary" aria-label="Начать новый проект">
+            Начать проект
+          </Button>
+        </Link>
       </Section>
 
       <Section padding="xl" id="services">
@@ -118,9 +53,11 @@ export default function Home() {
           Свяжитесь с нами сегодня, чтобы обсудить, как мы можем помочь вашему
           бизнесу достичь новых высот.
         </Text>
-        <Button size="lg" variant="secondary" aria-label="Связаться с нами">
-          Связаться с нами
-        </Button>
+        <Link href="/contact">
+          <Button size="lg" variant="secondary" aria-label="Связаться с нами">
+            Связаться с нами
+          </Button>
+        </Link>
       </Section>
     </div>
   );

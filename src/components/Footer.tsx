@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +51,8 @@ interface FooterProps
  */
 export const Footer = React.memo(
   ({ className, variant, padding, ...props }: FooterProps) => {
+    const currentYear = new Date().getFullYear();
+
     return (
       <footer
         className={cn(footerVariants({ variant, padding }), className)}
@@ -58,16 +61,22 @@ export const Footer = React.memo(
         <div className="container mx-auto px-4">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="mb-4 md:mb-0">
-              <h2 className="text-xl font-bold">Logo</h2>
-              <p className="mt-2 text-sm">© 2023 Все права защищены</p>
+              <Link href="/" className="text-xl font-bold hover:opacity-80 transition-opacity">
+                Logo
+              </Link>
+              <p className="mt-2 text-sm">© {currentYear} Все права защищены</p>
             </div>
             <div className="flex space-x-6">
-              <a href="#" className="hover:text-blue-400 transition-colors">
+              <Link
+                href="/privacy"
+                className="hover:text-blue-400 transition-colors">
                 Политика конфиденциальности
-              </a>
-              <a href="#" className="hover:text-blue-400 transition-colors">
+              </Link>
+              <Link
+                href="/terms"
+                className="hover:text-blue-400 transition-colors">
                 Условия использования
-              </a>
+              </Link>
             </div>
           </div>
         </div>
