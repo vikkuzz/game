@@ -19,6 +19,7 @@ export const COMBAT_CONSTANTS = {
   // Дистанции для проверок
   BUILDING_TARGET_DISTANCE: 50, // Здание считается в позиции, если близко (50px)
   UNIT_ATTACK_BUILDING_DISTANCE: 60, // Дистанция атаки юнита по зданию
+  INTERMEDIATE_TARGET_REACHED_THRESHOLD: 30, // Порог достижения промежуточной цели (30px)
 } as const;
 
 export const UPGRADE_CONSTANTS = {

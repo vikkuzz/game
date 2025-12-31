@@ -79,3 +79,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Мобильные улучшения */
+@media (max-width: 768px) {
+  /* Улучшение для touch-событий */
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+  }
+
+  /* Предотвращение двойного тапа для зума */
+  * {
+    touch-action: pan-x pan-y;
+  }
+
+  /* Безопасные зоны для устройств с вырезами */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Улучшение прокрутки */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Предотвращение выделения текста при тапе на кнопки */
+button,
+[role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}

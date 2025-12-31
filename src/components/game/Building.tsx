@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Building as BuildingType } from "@/types/game";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,8 @@ interface BuildingProps {
   building: BuildingType;
   isSelected: boolean;
   onClick: () => void;
+  playerGold?: number;
+  playerGoldIncome?: number;
 }
 
 const playerColors = [
@@ -28,21 +30,37 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
   building,
   isSelected,
   onClick,
+  playerGold,
+  playerGoldIncome,
 }) => {
   const colorClass = playerColors[building.playerId];
   const borderClass = playerBorderColors[building.playerId];
   const healthPercent = (building.health / building.maxHealth) * 100;
 
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const getSize = () => {
+    // Увеличиваем размеры на мобильных для лучшей видимости
+    const multiplier = isMobile ? 1.2 : 1;
+    
     switch (building.type) {
       case "castle":
-        return { width: 80, height: 80 };
+        return { width: 80 * multiplier, height: 80 * multiplier };
       case "barracks":
-        return { width: 60, height: 40 };
+        return { width: 60 * multiplier, height: 40 * multiplier };
       case "tower":
-        return { width: 30, height: 30 };
+        return { width: 30 * multiplier, height: 30 * multiplier };
       default:
-        return { width: 40, height: 40 };
+        return { width: 40 * multiplier, height: 40 * multiplier };
     }
   };
 
@@ -83,6 +101,20 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
           {building.type === "barracks" && "🏛️"}
           {building.type === "tower" && "🗼"}
         </div>
+
+        {/* Золото и доход (только для замков) - над полосой здоровья */}
+        {building.type === "castle" && playerGold !== undefined && playerGoldIncome !== undefined && (
+          <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-1 text-[8px] font-bold">
+            <div className="bg-black/80 text-yellow-400 px-1 py-0.5 rounded flex items-center gap-0.5">
+              <span>💰</span>
+              <span>{Math.floor(playerGold)}</span>
+            </div>
+            <div className="bg-black/80 text-green-400 px-1 py-0.5 rounded flex items-center gap-0.5">
+              <span>📈</span>
+              <span>{playerGoldIncome}/с</span>
+            </div>
+          </div>
+        )}
 
         {/* Полоса здоровья - внутри здания внизу */}
         <div className="absolute bottom-0 left-0 right-0 h-2 bg-gray-800 rounded-b overflow-hidden">

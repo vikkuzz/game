@@ -30,7 +30,7 @@ export const GAME_CONFIG = {
     archer: 8,
     mage: 5,
   },
-  unitRestoreTime: 5000, // 5 секунд на восстановление одного юнита
+  unitRestoreTime: 60000, // 1 минута на восстановление одного юнита
   killReward: {
     warrior: 15, // Золото за убийство воина
     archer: 20, // Золото за убийство лучника
@@ -76,7 +76,7 @@ export function createCastle(playerId: PlayerId, position: Position): Building {
     maxHealth: 2000, // Уменьшено с 3000
     level: 1,
     attack: 20, // Уменьшено с 30
-    attackRange: 50,
+    attackRange: 175,
     defense: 15,
   };
 }
@@ -386,72 +386,145 @@ export function getNextCircularTarget(
   allEnemyBuildings: Building[],
   mapSize: number
 ): Position {
+  // Контрольные точки
+  const B2 = { x: 80 * 1 + 40, y: 80 * 1 + 40 }; // B2
+  const I2 = { x: 80 * 8 + 40, y: 80 * 1 + 40 }; // I2
+  const B9 = { x: 80 * 1 + 40, y: 80 * 8 + 40 }; // B9
+  const I9 = { x: 80 * 8 + 40, y: 80 * 8 + 40 }; // I9
+
   if (!currentTarget) {
     // Если нет текущей цели, устанавливаем начальную цель
     const targetNeighbor =
       barrackIndex === 1
         ? (((playerId - 1 + 4) % 4) as PlayerId) // Против часовой
         : (((playerId + 1) % 4) as PlayerId); // По часовой
-    return getPlayerPosition(targetNeighbor, mapSize);
-  }
-
-  // Если есть живые вражеские здания у текущей цели, находим ближайшее
-  if (allEnemyBuildings.length > 0) {
-    // Определяем, какой игрок был целью
-    const distances = [
-      getDistance(currentTarget, getPlayerPosition(0, mapSize)),
-      getDistance(currentTarget, getPlayerPosition(1, mapSize)),
-      getDistance(currentTarget, getPlayerPosition(2, mapSize)),
-      getDistance(currentTarget, getPlayerPosition(3, mapSize)),
-    ];
-    const minDistIndex = distances.indexOf(Math.min(...distances));
-    const targetPlayerId = minDistIndex as PlayerId;
-
-    // Проверяем, есть ли живые здания у этого игрока
-    const targetPlayerBuildings: Building[] = allEnemyBuildings.filter(
-      (b) => b.playerId === targetPlayerId
+    
+    // Проверяем, есть ли живые здания у соседа
+    const neighborBuildings = allEnemyBuildings.filter(
+      (b) => b.playerId === targetNeighbor
     );
-    if (targetPlayerBuildings.length > 0) {
-      // Если есть, идем к ближайшему зданию этого игрока
-      let nearest: Building | null = null;
-      let minDistance = Infinity;
-      for (const building of targetPlayerBuildings) {
-        const distance = getDistance(currentTarget, building.position);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearest = building;
-        }
-      }
-      if (nearest) {
-        return nearest.position;
+    if (neighborBuildings.length > 0) {
+      return getPlayerPosition(targetNeighbor, mapSize);
+    }
+    // Если сосед уничтожен, идем дальше по кругу
+    const nextPlayer = barrackIndex === 1
+      ? ((targetNeighbor - 1 + 4) % 4) as PlayerId
+      : ((targetNeighbor + 1) % 4) as PlayerId;
+    if (nextPlayer !== playerId) {
+      return getPlayerPosition(nextPlayer, mapSize);
+    }
+    // Если дошли до себя, идем в центр
+    return { x: mapSize / 2, y: mapSize / 2 };
+  }
+
+  // Определяем, какой игрок был целью
+  const distances = [
+    getDistance(currentTarget, getPlayerPosition(0, mapSize)),
+    getDistance(currentTarget, getPlayerPosition(1, mapSize)),
+    getDistance(currentTarget, getPlayerPosition(2, mapSize)),
+    getDistance(currentTarget, getPlayerPosition(3, mapSize)),
+  ];
+  const minDistIndex = distances.indexOf(Math.min(...distances));
+  const targetPlayerId = minDistIndex as PlayerId;
+
+  // Проверяем, есть ли живые здания у этого игрока
+  const targetPlayerBuildings: Building[] = allEnemyBuildings.filter(
+    (b) => b.playerId === targetPlayerId
+  );
+
+  // Если есть живые здания у цели, идем к ближайшему
+  if (targetPlayerBuildings.length > 0) {
+    let nearest: Building | null = null;
+    let minDistance = Infinity;
+    for (const building of targetPlayerBuildings) {
+      const distance = getDistance(currentTarget, building.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = building;
       }
     }
-
-    // Если зданий у текущего игрока нет, идем дальше по кругу
-    if (barrackIndex === 1) {
-      // Против часовой стрелки
-      let nextPlayer = ((targetPlayerId - 1 + 4) % 4) as PlayerId;
-      // Пропускаем себя, если дошли до себя - идем в центр
-      if (nextPlayer === playerId) {
-        const center = mapSize / 2;
-        return { x: center, y: center };
-      }
-      return getPlayerPosition(nextPlayer, mapSize);
-    } else {
-      // По часовой стрелке
-      let nextPlayer = ((targetPlayerId + 1) % 4) as PlayerId;
-      // Пропускаем себя, если дошли до себя - идем в центр
-      if (nextPlayer === playerId) {
-        const center = mapSize / 2;
-        return { x: center, y: center };
-      }
-      return getPlayerPosition(nextPlayer, mapSize);
+    if (nearest) {
+      return nearest.position;
     }
   }
 
-  // Если нет вражеских зданий, идем в центр
-  const center = mapSize / 2;
-  return { x: center, y: center };
+  // Если зданий у текущего игрока нет, идем дальше по кругу
+  // Специальная логика для боковых игроков, когда верхний уничтожен
+  if (targetPlayerId === 0 && (playerId === 1 || playerId === 3)) {
+    // Игрок 1 (правый) и игрок 3 (левый), когда верхний уничтожен
+    // Идем навстречу друг другу
+    if (playerId === 1 && barrackIndex === 1) {
+      // Игрок 1, верхний барак → к игроку 3
+      const player3Buildings = allEnemyBuildings.filter(b => b.playerId === 3);
+      if (player3Buildings.length > 0) {
+        return getPlayerPosition(3, mapSize);
+      }
+      // Если игрок 3 тоже уничтожен, идем к нижнему игроку через I9
+      const player2Buildings = allEnemyBuildings.filter(b => b.playerId === 2);
+      if (player2Buildings.length > 0) {
+        return I9; // Сначала в I9, потом к игроку 2
+      }
+      return { x: mapSize / 2, y: mapSize / 2 };
+    }
+    if (playerId === 3 && barrackIndex === 2) {
+      // Игрок 3, верхний барак → к игроку 1
+      const player1Buildings = allEnemyBuildings.filter(b => b.playerId === 1);
+      if (player1Buildings.length > 0) {
+        return getPlayerPosition(1, mapSize);
+      }
+      // Если игрок 1 тоже уничтожен, идем к нижнему игроку через B9
+      const player2Buildings = allEnemyBuildings.filter(b => b.playerId === 2);
+      if (player2Buildings.length > 0) {
+        return B9; // Сначала в B9, потом к игроку 2
+      }
+      return { x: mapSize / 2, y: mapSize / 2 };
+    }
+  }
+
+  // Обычная логика движения по кругу
+  if (barrackIndex === 1) {
+    // Против часовой стрелки
+    let nextPlayer = ((targetPlayerId - 1 + 4) % 4) as PlayerId;
+    // Пропускаем себя, если дошли до себя
+    if (nextPlayer === playerId) {
+      nextPlayer = ((nextPlayer - 1 + 4) % 4) as PlayerId;
+    }
+    // Проверяем, есть ли живые здания у следующего игрока
+    const nextPlayerBuildings = allEnemyBuildings.filter(b => b.playerId === nextPlayer);
+    if (nextPlayerBuildings.length > 0) {
+      return getPlayerPosition(nextPlayer, mapSize);
+    }
+    // Если следующий игрок уничтожен, идем дальше или в центр
+    const finalPlayer = ((nextPlayer - 1 + 4) % 4) as PlayerId;
+    if (finalPlayer !== playerId) {
+      const finalPlayerBuildings = allEnemyBuildings.filter(b => b.playerId === finalPlayer);
+      if (finalPlayerBuildings.length > 0) {
+        return getPlayerPosition(finalPlayer, mapSize);
+      }
+    }
+    return { x: mapSize / 2, y: mapSize / 2 };
+  } else {
+    // По часовой стрелке
+    let nextPlayer = ((targetPlayerId + 1) % 4) as PlayerId;
+    // Пропускаем себя, если дошли до себя
+    if (nextPlayer === playerId) {
+      nextPlayer = ((nextPlayer + 1) % 4) as PlayerId;
+    }
+    // Проверяем, есть ли живые здания у следующего игрока
+    const nextPlayerBuildings = allEnemyBuildings.filter(b => b.playerId === nextPlayer);
+    if (nextPlayerBuildings.length > 0) {
+      return getPlayerPosition(nextPlayer, mapSize);
+    }
+    // Если следующий игрок уничтожен, идем дальше или в центр
+    const finalPlayer = ((nextPlayer + 1) % 4) as PlayerId;
+    if (finalPlayer !== playerId) {
+      const finalPlayerBuildings = allEnemyBuildings.filter(b => b.playerId === finalPlayer);
+      if (finalPlayerBuildings.length > 0) {
+        return getPlayerPosition(finalPlayer, mapSize);
+      }
+    }
+    return { x: mapSize / 2, y: mapSize / 2 };
+  }
 }
 
 // Получение следующей цели для юнита из центрального барака, если цель разрушена
@@ -1199,6 +1272,55 @@ export function findNearestEnemyUnitForBuilding(
   });
 
   return nearest;
+}
+
+/**
+ * Определяет номер клетки для позиции (клетки размером 80x80)
+ */
+export function getCellCoordinates(position: Position): { cellX: number; cellY: number } {
+  return {
+    cellX: Math.floor(position.x / CELL_SIZE),
+    cellY: Math.floor(position.y / CELL_SIZE),
+  };
+}
+
+/**
+ * Проверяет, находятся ли две позиции в одной клетке
+ */
+export function isInSameCell(pos1: Position, pos2: Position): boolean {
+  const cell1 = getCellCoordinates(pos1);
+  const cell2 = getCellCoordinates(pos2);
+  return cell1.cellX === cell2.cellX && cell1.cellY === cell2.cellY;
+}
+
+/**
+ * Проверяет, есть ли вражеские юниты в клетке барака
+ */
+export function hasEnemyInBarrackCell(
+  barrack: Building,
+  allUnits: Unit[]
+): boolean {
+  const enemyUnits = allUnits.filter(
+    (u) => u.playerId !== barrack.playerId && u.health > 0
+  );
+
+  return enemyUnits.some((unit) => isInSameCell(barrack.position, unit.position));
+}
+
+/**
+ * Проверяет, есть ли союзные воины в клетке барака
+ */
+export function hasAllyWarriorInBarrackCell(
+  barrack: Building,
+  allUnits: Unit[]
+): boolean {
+  const allyWarriors = allUnits.filter(
+    (u) => u.playerId === barrack.playerId && u.type === "warrior" && u.health > 0
+  );
+
+  return allyWarriors.some((warrior) =>
+    isInSameCell(barrack.position, warrior.position)
+  );
 }
 
 // Урон зданию

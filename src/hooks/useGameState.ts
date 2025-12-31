@@ -19,6 +19,8 @@ import {
   getSpawnUnitType,
   getSpawnInterval,
   getDistance,
+  hasEnemyInBarrackCell,
+  hasAllyWarriorInBarrackCell,
   GAME_CONFIG,
 } from "@/lib/gameLogic";
 import { COMBAT_CONSTANTS } from "@/lib/game/constants";
@@ -355,20 +357,32 @@ export function useGameState() {
     if (gameState.isPaused) return;
 
     const goldInterval = setInterval(() => {
-      setGameState((prev) => ({
-        ...prev,
-        players: prev.players.map((player) => {
-          const earnedGold = (player.goldIncome * prev.gameSpeed) / 10;
-          return {
-            ...player,
-            gold: player.gold + earnedGold,
-            stats: {
-              ...player.stats,
-              goldEarned: player.stats.goldEarned + earnedGold,
-            },
-          };
-        }),
-      }));
+      setGameState((prev) => {
+        // goldIncome - это золото в секунду реального времени
+        // Интервал уже учитывает gameSpeed (делится на gameSpeed)
+        // Базовый интервал = 1000мс = 1 секунда реального времени
+        // При gameSpeed = 1: интервал = 1000мс, за 1 секунду начисляется goldIncome золота
+        // При gameSpeed = 2: интервал = 500мс, функция вызывается в 2 раза чаще, за 1 секунду начисляется goldIncome * 2 золота
+        const baseIntervalSeconds = GAME_CONFIG.goldIncomeInterval / 1000; // 1 секунда
+        return {
+          ...prev,
+          players: prev.players.map((player) => {
+            // Начисляем золото: доход в секунду * базовый интервал
+            // Интервал уже учитывает gameSpeed (делится на gameSpeed), поэтому функция вызывается чаще
+            // При gameSpeed = 1: 10 * 1 = 10 золота за интервал 1000мс = 10 золота в секунду
+            // При gameSpeed = 2: 10 * 1 = 10 золота за интервал 500мс, за 1 секунду = 20 золота
+            const earnedGold = player.goldIncome * baseIntervalSeconds;
+            return {
+              ...player,
+              gold: player.gold + earnedGold,
+              stats: {
+                ...player.stats,
+                goldEarned: player.stats.goldEarned + earnedGold,
+              },
+            };
+          }),
+        };
+      });
     }, GAME_CONFIG.goldIncomeInterval / gameState.gameSpeed);
 
     return () => clearInterval(goldInterval);
@@ -545,6 +559,32 @@ export function useGameState() {
 
         const cost = GAME_CONFIG.unitCost[unitType];
         const availableUnits = barrack.availableUnits || 0;
+        const now = Date.now();
+
+        // Проверка кулдауна (5 секунд)
+        if (
+          barrack.lastUnitPurchaseTime &&
+          now - barrack.lastUnitPurchaseTime < 5000
+        ) {
+          return prev; // Кулдаун еще не прошел
+        }
+
+        // Собираем всех юнитов для проверки
+        const allUnits = prev.players
+          .flatMap((p) => p.units)
+          .filter((u) => u.health > 0);
+
+        // Проверка: есть ли враг в клетке барака
+        const hasEnemy = hasEnemyInBarrackCell(barrack, allUnits);
+        if (!hasEnemy) {
+          return prev; // Нет врагов в клетке - не покупаем
+        }
+
+        // Проверка: нет ли союзного воина в клетке барака
+        const hasAllyWarrior = hasAllyWarriorInBarrackCell(barrack, allUnits);
+        if (hasAllyWarrior) {
+          return prev; // Есть союзный воин - не покупаем
+        }
 
         if (player.gold >= cost && availableUnits > 0) {
           const barrackIndex = player.barracks.findIndex(
@@ -574,7 +614,11 @@ export function useGameState() {
                   units: [...p.units, newUnit],
                   barracks: p.barracks.map((b) =>
                     b.id === barrackId
-                      ? { ...b, availableUnits: availableUnits - 1 }
+                      ? {
+                          ...b,
+                          availableUnits: availableUnits - 1,
+                          lastUnitPurchaseTime: now,
+                        }
                       : b
                   ),
                 };
@@ -739,7 +783,7 @@ export function useGameState() {
                 const updatedBuilding = {
                   ...building,
                   health: repairedHealth,
-                  repairCooldown: 10000,
+                  repairCooldown: 300000, // 5 минут кулдаун на ремонт
                 };
 
                 if (p.castle.id === buildingId) {
@@ -936,50 +980,76 @@ export function useGameState() {
           // Случайное решение ИИ
           const action = Math.random();
 
-          if (action < 0.4 && player.gold >= 200) {
+          if (action < 0.4) {
             // 40% шанс - покупка юнита
             const aliveBarracks = player.barracks.filter((b) => b.health > 0);
             if (aliveBarracks.length > 0) {
               const barrack =
                 aliveBarracks[Math.floor(Math.random() * aliveBarracks.length)];
               const availableUnits = barrack.availableUnits || 0;
+              const now = Date.now();
 
-              if (availableUnits > 0) {
-                const unitType: UnitType = "warrior"; // Только воины
-                const cost = GAME_CONFIG.unitCost[unitType];
+              // Проверка кулдауна (5 секунд)
+              if (
+                barrack.lastUnitPurchaseTime &&
+                now - barrack.lastUnitPurchaseTime < 5000
+              ) {
+                // Кулдаун еще не прошел - пропускаем покупку
+              } else if (availableUnits > 0) {
+                // Собираем всех юнитов для проверки
+                const allUnits = prev.players
+                  .flatMap((p) => p.units)
+                  .filter((u) => u.health > 0);
 
-                if (player.gold >= cost) {
-                  updated = true;
-                  const barrackIndex = player.barracks.findIndex(
-                    (b) => b.id === barrack.id
-                  );
-                  const targetPos = getUnitTarget(
-                    player.id,
-                    barrackIndex,
-                    GAME_CONFIG.mapSize
-                  );
-                  const newUnit = createUnit(
-                    unitType,
-                    player.id,
-                    barrack.position,
-                    targetPos,
-                    player.upgrades,
-                    barrackIndex
-                  );
+                // Проверка: есть ли враг в клетке барака
+                const hasEnemy = hasEnemyInBarrackCell(barrack, allUnits);
 
-                  return {
-                    ...player,
-                    gold: player.gold - cost,
-                    units: [...player.units, newUnit],
-                    barracks: player.barracks.map((b) =>
-                      b.id === barrack.id
-                        ? {
-                            ...b,
-                            availableUnits: (b.availableUnits || 0) - 1,
-                          }
-                        : b
-                    ),
-                  };
+                // Проверка: нет ли союзного воина в клетке барака
+                const hasAllyWarrior = hasAllyWarriorInBarrackCell(
+                  barrack,
+                  allUnits
+                );
+
+                if (hasEnemy && !hasAllyWarrior) {
+                  const unitType: UnitType = "warrior"; // Только воины
+                  const cost = GAME_CONFIG.unitCost[unitType];
+
+                  // Проверяем стоимость конкретного юнита и наличие резерва для улучшений
+                  // ИИ должен иметь минимум 200 золота в резерве после покупки для улучшений
+                  if (player.gold >= cost + 200) {
+                    updated = true;
+                    const barrackIndex = player.barracks.findIndex(
+                      (b) => b.id === barrack.id
+                    );
+                    const targetPos = getUnitTarget(
+                      player.id,
+                      barrackIndex,
+                      GAME_CONFIG.mapSize
+                    );
+                    const newUnit = createUnit(
+                      unitType,
+                      player.id,
+                      barrack.position,
+                      targetPos,
+                      player.upgrades,
+                      barrackIndex
+                    );
+
+                    return {
+                      ...player,
+                      gold: player.gold - cost,
+                      units: [...player.units, newUnit],
+                      barracks: player.barracks.map((b) =>
+                        b.id === barrack.id
+                          ? {
+                              ...b,
+                              availableUnits: (b.availableUnits || 0) - 1,
+                              lastUnitPurchaseTime: now,
+                            }
+                          : b
+                      ),
+                    };
+                  }
                 }
               }
             }
@@ -1134,7 +1204,7 @@ export function useGameState() {
                   const updatedBuilding = {
                     ...building,
                     health: repairedHealth,
-                    repairCooldown: 10000,
+                    repairCooldown: 300000, // 5 минут кулдаун на ремонт
                   };
 
                   if (player.castle.id === buildingId) {
@@ -1327,11 +1397,11 @@ export function useGameState() {
                   ...newState,
                   players: newState.players.map((p) => {
                     if (p.id === playerId) {
-                      const baseCastleHealth = 3000;
-                      const baseCastleAttack = 30;
-                      const baseTowerHealth = 800;
-                      const baseTowerAttack = 50;
-                      const baseBarrackHealth = 1500;
+                      const baseCastleHealth = 2000; // Уменьшено с 3000
+                      const baseCastleAttack = 20; // Уменьшено с 30
+                      const baseTowerHealth = 500; // Уменьшено с 800
+                      const baseTowerAttack = 30; // Уменьшено с 50
+                      const baseBarrackHealth = 1000; // Уменьшено с 1500
 
                       return {
                         ...p,
@@ -1476,11 +1546,11 @@ export function useGameState() {
                     ...newState,
                     players: newState.players.map((p) => {
                       if (p.id === playerId) {
-                        const baseCastleHealth = 3000;
-                        const baseCastleAttack = 30;
-                        const baseTowerHealth = 800;
-                        const baseTowerAttack = 50;
-                        const baseBarrackHealth = 1500;
+                        const baseCastleHealth = 2000; // Исправлено с 3000
+                        const baseCastleAttack = 20; // Исправлено с 30
+                        const baseTowerHealth = 500; // Исправлено с 800
+                        const baseTowerAttack = 30; // Исправлено с 50
+                        const baseBarrackHealth = 1000; // Исправлено с 1500
 
                         return {
                           ...p,
@@ -1644,11 +1714,11 @@ export function useGameState() {
                     ...newState,
                     players: newState.players.map((p) => {
                       if (p.id === playerId) {
-                        const baseCastleHealth = 3000;
-                        const baseCastleAttack = 30;
-                        const baseTowerHealth = 800;
-                        const baseTowerAttack = 50;
-                        const baseBarrackHealth = 1500;
+                        const baseCastleHealth = 2000; // Исправлено с 3000
+                        const baseCastleAttack = 20; // Исправлено с 30
+                        const baseTowerHealth = 500; // Исправлено с 800
+                        const baseTowerAttack = 30; // Исправлено с 50
+                        const baseBarrackHealth = 1000; // Исправлено с 1500
 
                         return {
                           ...p,

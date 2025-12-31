@@ -93,10 +93,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`antialiased min-h-screen flex flex-col`}>
+      <body className={`antialiased min-h-screen`}>
         <ThemeProvider>
           <Header />
-          <main id="main-content" className="flex-grow pt-16" role="main">
+          <main id="main-content" className="pt-16" role="main">
             {children}
           </main>
           <Footer />

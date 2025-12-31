@@ -21,8 +21,17 @@ export const GameMap: React.FC<GameMapProps> = ({
   const center = mapSize / 2;
 
   return (
-    <div className="relative bg-linear-to-br from-green-900 to-green-700 border-4 border-gray-800 rounded-lg overflow-hidden shadow-2xl">
+    <div 
+      className="relative bg-linear-to-br from-green-900 to-green-700 border-4 border-gray-800 rounded-lg shadow-2xl"
+      style={{
+        width: `${mapSize}px`,
+        height: `${mapSize}px`,
+        minWidth: `${mapSize}px`,
+        minHeight: `${mapSize}px`,
+        display: 'inline-block',
+      }}>
       <div
+        className="relative w-full h-full"
         style={{
           width: mapSize,
           height: mapSize,
@@ -113,6 +122,8 @@ export const GameMap: React.FC<GameMapProps> = ({
                 building={player.castle}
                 isSelected={selectedBuilding === player.castle.id}
                 onClick={() => onBuildingClick(player.castle.id)}
+                playerGold={player.gold}
+                playerGoldIncome={player.goldIncome}
               />
               {player.barracks.map((barrack) => (
                 <BuildingComponent

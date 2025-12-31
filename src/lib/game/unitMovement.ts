@@ -59,8 +59,6 @@ function handleEnemyAttackWithIntermediate(
   allEnemyBuildings: Building[],
   deltaTime: number
 ): Unit | null {
-  if (!enemyUnit && !enemyBuilding) return null;
-
   const currentTarget = unit.intermediateTargets![unit.currentIntermediateIndex!];
 
   // Проверяем здание в промежуточной цели
@@ -71,36 +69,120 @@ function handleEnemyAttackWithIntermediate(
 
   const distanceToTarget = getDistance(unit.position, currentTarget);
 
-  if (buildingAtTarget && distanceToTarget <= unit.attackRange) {
-    if (!lineCrossesImpassable(unit.position, buildingAtTarget.position)) {
-      // Останавливаемся для атаки, но сохраняем targetPosition
-      return {
-        ...unit,
-        isMoving: false,
-        targetPosition: currentTarget,
-      };
+  // Если есть враг для атаки
+  if (enemyUnit || enemyBuilding) {
+    if (buildingAtTarget && distanceToTarget <= unit.attackRange) {
+      if (!lineCrossesImpassable(unit.position, buildingAtTarget.position)) {
+        // Останавливаемся для атаки, но сохраняем targetPosition
+        return {
+          ...unit,
+          isMoving: false,
+          targetPosition: currentTarget,
+        };
+      }
+      // Ландшафт блокирует - пытаемся подойти ближе
+      return moveUnit(unit, deltaTime);
     }
-    // Ландшафт блокирует - пытаемся подойти ближе
-    return moveUnit(unit, deltaTime);
   }
 
-  // Переключение на следующую промежуточную цель
-  if (!buildingAtTarget && distanceToTarget <= unit.attackRange) {
+  // Переключение на следующую промежуточную цель, если достигли текущую
+  // Проверяем либо расстояние меньше радиуса атаки, либо очень близко к цели
+  if (!buildingAtTarget && (distanceToTarget <= unit.attackRange || distanceToTarget <= COMBAT_CONSTANTS.INTERMEDIATE_TARGET_REACHED_THRESHOLD)) {
     const nextIndex = unit.currentIntermediateIndex! + 1;
     if (nextIndex < unit.intermediateTargets!.length) {
       return {
         ...unit,
         targetPosition: unit.intermediateTargets![nextIndex],
         currentIntermediateIndex: nextIndex,
+        isMoving: true,
       };
     }
+    // Все промежуточные цели достигнуты - переходим к финальной
     if (unit.finalTarget) {
+      // Проверяем, есть ли живые здания у финальной цели
+      const finalTargetBuildings = allEnemyBuildings.find((b) => {
+        const dist = getDistance(b.position, unit.finalTarget!);
+        return dist < COMBAT_CONSTANTS.BUILDING_TARGET_DISTANCE;
+      });
+
+      if (finalTargetBuildings) {
+        // Финальная цель существует - идем к ней
+        return {
+          ...unit,
+          targetPosition: unit.finalTarget,
+          currentIntermediateIndex: undefined,
+          hasReachedIntermediate: true,
+          isMoving: true,
+        };
+      } else {
+        // Финальная цель уничтожена - находим новую цель
+        const nextTarget = getNextTarget(
+          unit.playerId,
+          unit.finalTarget,
+          allEnemyBuildings,
+          GAME_CONFIG.mapSize,
+          unit.barrackIndex
+        );
+        return {
+          ...unit,
+          targetPosition: nextTarget,
+          intermediateTargets: undefined,
+          currentIntermediateIndex: undefined,
+          finalTarget: undefined,
+          hasReachedIntermediate: false,
+          isMoving: true,
+        };
+      }
+    }
+  }
+
+  // Если достигли промежуточную цель (очень близко), но нет зданий для атаки - переключаемся
+  if (distanceToTarget <= COMBAT_CONSTANTS.INTERMEDIATE_TARGET_REACHED_THRESHOLD && !buildingAtTarget) {
+    const nextIndex = unit.currentIntermediateIndex! + 1;
+    if (nextIndex < unit.intermediateTargets!.length) {
       return {
         ...unit,
-        targetPosition: unit.finalTarget,
-        currentIntermediateIndex: undefined,
-        hasReachedIntermediate: true,
+        targetPosition: unit.intermediateTargets![nextIndex],
+        currentIntermediateIndex: nextIndex,
+        isMoving: true,
       };
+    }
+    // Все промежуточные цели достигнуты - переходим к финальной
+    if (unit.finalTarget) {
+      // Проверяем, есть ли живые здания у финальной цели
+      const finalTargetBuildings = allEnemyBuildings.find((b) => {
+        const dist = getDistance(b.position, unit.finalTarget!);
+        return dist < COMBAT_CONSTANTS.BUILDING_TARGET_DISTANCE;
+      });
+
+      if (finalTargetBuildings) {
+        // Финальная цель существует - идем к ней
+        return {
+          ...unit,
+          targetPosition: unit.finalTarget,
+          currentIntermediateIndex: undefined,
+          hasReachedIntermediate: true,
+          isMoving: true,
+        };
+      } else {
+        // Финальная цель уничтожена - находим новую цель
+        const nextTarget = getNextTarget(
+          unit.playerId,
+          unit.finalTarget,
+          allEnemyBuildings,
+          GAME_CONFIG.mapSize,
+          unit.barrackIndex
+        );
+        return {
+          ...unit,
+          targetPosition: nextTarget,
+          intermediateTargets: undefined,
+          currentIntermediateIndex: undefined,
+          finalTarget: undefined,
+          hasReachedIntermediate: false,
+          isMoving: true,
+        };
+      }
     }
   }
 
@@ -269,10 +351,12 @@ function handleNewTarget(
       );
     }
 
-    // Цель разрушена - находим новую
+    // Цель разрушена или это промежуточная точка без здания - находим новую
+    // Если есть финальная цель, используем её для определения следующей цели
+    const referenceTarget = unit.finalTarget || unit.targetPosition;
     const nextTarget = getNextTarget(
       unit.playerId,
-      unit.targetPosition,
+      referenceTarget,
       allEnemyBuildings,
       GAME_CONFIG.mapSize,
       unit.barrackIndex
@@ -281,6 +365,10 @@ function handleNewTarget(
       {
         ...unit,
         targetPosition: nextTarget,
+        intermediateTargets: undefined,
+        currentIntermediateIndex: undefined,
+        finalTarget: undefined,
+        hasReachedIntermediate: false,
         isMoving: true, // Убеждаемся, что движение включено
       },
       deltaTime
@@ -299,6 +387,10 @@ function handleNewTarget(
     {
       ...unit,
       targetPosition: nextTarget,
+      intermediateTargets: undefined,
+      currentIntermediateIndex: undefined,
+      finalTarget: undefined,
+      hasReachedIntermediate: false,
       isMoving: true, // Убеждаемся, что движение включено
     },
     deltaTime
@@ -383,11 +475,59 @@ export function processUnitMovement(context: MovementContext): Unit {
 
   // ВАЖНО: Если юнит остановился, но нет врагов в радиусе атаки - возобновляем движение
   if (!updatedUnit.isMoving && !hasEnemiesInRange(updatedUnit, targets)) {
-    // Включаем движение и ищем новую цель
-    updatedUnit = {
-      ...updatedUnit,
-      isMoving: true,
-    };
+    // Если есть промежуточные цели, проверяем, достиг ли юнит текущую промежуточную цель
+    if (hasIntermediateTargets && updatedUnit.intermediateTargets) {
+      const currentIntermediate = updatedUnit.intermediateTargets[updatedUnit.currentIntermediateIndex!];
+      const distanceToIntermediate = getDistance(updatedUnit.position, currentIntermediate);
+      
+      // Если достиг промежуточную цель и нет зданий для атаки - переключаемся
+      if (distanceToIntermediate <= COMBAT_CONSTANTS.INTERMEDIATE_TARGET_REACHED_THRESHOLD) {
+        const buildingAtIntermediate = allEnemyBuildings.find((b) => {
+          const dist = getDistance(b.position, currentIntermediate);
+          return dist < COMBAT_CONSTANTS.BUILDING_TARGET_DISTANCE;
+        });
+        
+        if (!buildingAtIntermediate) {
+          // Достигли промежуточную цель, но нет зданий - переключаемся на следующую
+          const nextIndex = updatedUnit.currentIntermediateIndex! + 1;
+          if (nextIndex < updatedUnit.intermediateTargets.length) {
+            updatedUnit = {
+              ...updatedUnit,
+              targetPosition: updatedUnit.intermediateTargets[nextIndex],
+              currentIntermediateIndex: nextIndex,
+              isMoving: true,
+            };
+          } else if (updatedUnit.finalTarget) {
+            // Все промежуточные цели достигнуты - идем к финальной
+            updatedUnit = {
+              ...updatedUnit,
+              targetPosition: updatedUnit.finalTarget,
+              currentIntermediateIndex: undefined,
+              hasReachedIntermediate: true,
+              isMoving: true,
+            };
+          }
+        } else {
+          // Есть здание - продолжаем движение к нему
+          updatedUnit = {
+            ...updatedUnit,
+            isMoving: true,
+          };
+        }
+      } else {
+        // Еще не достиг промежуточную цель - продолжаем движение
+        updatedUnit = {
+          ...updatedUnit,
+          isMoving: true,
+        };
+      }
+    } else {
+      // Нет промежуточных целей - просто возобновляем движение
+      updatedUnit = {
+        ...updatedUnit,
+        isMoving: true,
+      };
+    }
   }
 
   // Если есть промежуточные цели
@@ -401,6 +541,37 @@ export function processUnitMovement(context: MovementContext): Unit {
     );
     if (result) {
       return result;
+    }
+
+    // Проверяем, уничтожена ли финальная цель, пока движемся к промежуточной
+    if (updatedUnit.finalTarget) {
+      const finalTargetBuildings = allEnemyBuildings.find((b) => {
+        const dist = getDistance(b.position, updatedUnit.finalTarget!);
+        return dist < COMBAT_CONSTANTS.BUILDING_TARGET_DISTANCE;
+      });
+
+      if (!finalTargetBuildings) {
+        // Финальная цель уничтожена - находим новую цель
+        const nextTarget = getNextTarget(
+          updatedUnit.playerId,
+          updatedUnit.finalTarget,
+          allEnemyBuildings,
+          GAME_CONFIG.mapSize,
+          updatedUnit.barrackIndex
+        );
+        return moveUnit(
+          {
+            ...updatedUnit,
+            targetPosition: nextTarget,
+            intermediateTargets: undefined,
+            currentIntermediateIndex: undefined,
+            finalTarget: undefined,
+            hasReachedIntermediate: false,
+            isMoving: true,
+          },
+          deltaTime
+        );
+      }
     }
 
     // Продолжаем движение к промежуточной цели

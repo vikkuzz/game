@@ -8,6 +8,7 @@ import { GameOverModal } from "@/components/game/GameOverModal";
 import { Button } from "@/components/Button";
 import { Section } from "@/components/Section";
 import { UnitType, PlayerId } from "@/types/game";
+import { MobileControlPanel } from "@/components/game/MobileControlPanel";
 
 /**
  * Страница игры Survival Chaos
@@ -36,43 +37,160 @@ export default function GamePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800">
-      <Section padding="lg">
-        <div className="mb-4 flex justify-between items-center">
-          <h1 className="text-3xl font-bold text-white">Survival Chaos</h1>
-          <div className="flex gap-2 items-center">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col md:block">
+      {/* Мобильный layout - карта на весь экран */}
+      <div className="md:hidden flex flex-col h-screen">
+        {/* Компактный заголовок с управлением */}
+        <div className="bg-gray-900/95 backdrop-blur-sm border-b border-gray-700 px-3 py-2 z-10 flex-shrink-0">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h1 className="text-lg font-bold text-white">Survival Chaos</h1>
+            <div className="flex gap-1 items-center">
+              <Button
+                onClick={togglePause}
+                variant={gameState.isPaused ? "success" : "warning"}
+                size="sm"
+                className="text-xs px-2 py-1">
+                {gameState.isPaused ? "▶" : "⏸"}
+              </Button>
+              <div className="flex gap-1">
+                <Button
+                  onClick={() => setGameSpeed(0.5)}
+                  variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2 py-1">
+                  0.5x
+                </Button>
+                <Button
+                  onClick={() => setGameSpeed(1)}
+                  variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2 py-1">
+                  1x
+                </Button>
+                <Button
+                  onClick={() => setGameSpeed(2)}
+                  variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2 py-1">
+                  2x
+                </Button>
+              </div>
+            </div>
+          </div>
+          {/* Золото и доход */}
+          {gameState.players[gameState.selectedPlayer || 0] && (
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1">
+                <span className="text-gray-400">💰</span>
+                <span className="text-yellow-400 font-bold">
+                  {Math.floor(gameState.players[gameState.selectedPlayer || 0].gold)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-gray-400">📈</span>
+                <span className="text-green-400 font-semibold">
+                  {gameState.players[gameState.selectedPlayer || 0].goldIncome}/сек
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Окно обзора карты - сжимается, но карта внутри полного размера с прокруткой */}
+        <div className="flex-1 overflow-auto relative w-full bg-gray-800">
+          <div className="inline-block">
+            <GameMap
+              gameState={gameState}
+              selectedBuilding={gameState.selectedBuilding}
+              onBuildingClick={handleBuildingClick}
+            />
+          </div>
+        </div>
+
+        {/* Мобильная панель с табами внизу */}
+        <MobileControlPanel
+          gameState={gameState}
+          selectedPlayer={gameState.selectedPlayer || 0}
+          onBuyUnit={(
+            playerId: PlayerId,
+            barrackId: string,
+            unitType: UnitType
+          ) => buyUnit(playerId, barrackId, unitType)}
+          onUpgradeBuilding={(playerId: PlayerId, buildingId: string) =>
+            upgradeBuilding(playerId, buildingId)
+          }
+          onRepairBuilding={(playerId: PlayerId, buildingId: string) =>
+            repairBuilding(playerId, buildingId)
+          }
+          onUpgradeCastleStat={(playerId: PlayerId, stat) =>
+            upgradeCastleStat(playerId, stat)
+          }
+          onSelectPlayer={(playerId: PlayerId) => selectPlayer(playerId)}
+          onToggleAutoUpgrade={toggleAutoUpgrade}
+        />
+      </div>
+
+      {/* Десктопный layout */}
+      <Section padding="lg" className="hidden md:block">
+        {/* Заголовок и управление */}
+        <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl md:text-3xl font-bold text-white">Survival Chaos</h1>
+            {/* Золото и доход */}
+            {gameState.players[gameState.selectedPlayer || 0] && (
+              <div className="flex items-center gap-4 text-base">
+                <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg">
+                  <span className="text-yellow-400">💰</span>
+                  <span className="text-yellow-400 font-bold">
+                    {Math.floor(gameState.players[gameState.selectedPlayer || 0].gold)}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg">
+                  <span className="text-green-400">📈</span>
+                  <span className="text-green-400 font-semibold">
+                    {gameState.players[gameState.selectedPlayer || 0].goldIncome}/сек
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 items-center w-full md:w-auto justify-between md:justify-end">
             {/* Управление игрой */}
             <Button
               onClick={togglePause}
               variant={gameState.isPaused ? "success" : "warning"}
-              size="sm">
+              size="sm"
+              className="flex-1 md:flex-none">
               {gameState.isPaused ? "▶ Продолжить" : "⏸ Пауза"}
             </Button>
             <div className="flex gap-1">
               <Button
                 onClick={() => setGameSpeed(0.5)}
                 variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
-                size="sm">
+                size="sm"
+                className="text-xs px-2">
                 0.5x
               </Button>
               <Button
                 onClick={() => setGameSpeed(1)}
                 variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
-                size="sm">
+                size="sm"
+                className="text-xs px-2">
                 1x
               </Button>
               <Button
                 onClick={() => setGameSpeed(2)}
                 variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
-                size="sm">
+                size="sm"
+                className="text-xs px-2">
                 2x
               </Button>
             </div>
           </div>
         </div>
 
-        {/* Информация о юнитах и прокачке игроков */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Информация о юнитах и прокачке игроков - скрыта на мобильных, показывается в панели */}
+        <div className="mb-6 hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {gameState.players.map((player) => {
             const getPlayerStyles = (id: number) => {
               switch (id) {
@@ -139,7 +257,7 @@ export default function GamePage() {
         {/* Игровая область */}
         <div className="flex gap-6 flex-col lg:flex-row">
           {/* Карта */}
-          <div className="flex-1 flex justify-center">
+          <div className="flex-1 flex justify-center overflow-x-auto md:overflow-visible">
             <GameMap
               gameState={gameState}
               selectedBuilding={gameState.selectedBuilding}
@@ -147,8 +265,8 @@ export default function GamePage() {
             />
           </div>
 
-          {/* Панель управления */}
-          <div className="w-full lg:w-96">
+          {/* Панель управления - скрыта на мобильных, показывается через выдвижное меню */}
+          <div className="hidden lg:block w-full lg:w-96">
             <ControlPanel
               gameState={gameState}
               selectedPlayer={gameState.selectedPlayer || 0}
@@ -172,8 +290,9 @@ export default function GamePage() {
           </div>
         </div>
 
-        {/* Инструкции */}
-        <div className="mt-6 bg-white/10 backdrop-blur-sm rounded-lg p-4 text-white text-sm">
+
+        {/* Инструкции - скрыты на мобильных */}
+        <div className="mt-6 hidden md:block bg-white/10 backdrop-blur-sm rounded-lg p-4 text-white text-sm">
           <h3 className="font-bold mb-2">Как играть:</h3>
           <ul className="list-disc list-inside space-y-1">
             <li>Выберите игрока (1-4) в панели управления</li>

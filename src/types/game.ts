@@ -55,6 +55,7 @@ export interface Building {
   lastAttackTime?: number; // Время последней атаки
   attackTarget?: Position; // Позиция цели атаки для визуализации
   defense?: number; // Защита здания
+  lastUnitPurchaseTime?: number; // Время последней покупки юнита (кулдаун 5 секунд)
 }
 
 export interface CastleUpgrades {
