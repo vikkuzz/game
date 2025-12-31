@@ -67,7 +67,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                   !p.isActive && "opacity-50 cursor-not-allowed"
                 )}
                 disabled={!p.isActive}>
-                Игрок {p.id + 1}
+                {p.id + 1}
               </button>
             );
           })}
@@ -152,7 +152,10 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                 disabled={
                   selectedBuilding.health >= selectedBuilding.maxHealth ||
                   player.gold < 100 ||
-                  !!(selectedBuilding.repairCooldown && selectedBuilding.repairCooldown > 0)
+                  !!(
+                    selectedBuilding.repairCooldown &&
+                    selectedBuilding.repairCooldown > 0
+                  )
                 }
                 variant="secondary"
                 size="sm">

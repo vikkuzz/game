@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Building as BuildingType } from "@/types/game";
 import { cn } from "@/lib/utils";
+import { getSpawnInterval } from "@/lib/gameLogic";
 
 interface BuildingProps {
   building: BuildingType;
@@ -10,6 +11,7 @@ interface BuildingProps {
   onClick: () => void;
   playerGold?: number;
   playerGoldIncome?: number;
+  isCurrentPlayer?: boolean;
 }
 
 const playerColors = [
@@ -32,6 +34,7 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
   onClick,
   playerGold,
   playerGoldIncome,
+  isCurrentPlayer,
 }) => {
   const colorClass = playerColors[building.playerId];
   const borderClass = playerBorderColors[building.playerId];
@@ -66,6 +69,16 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
 
   const size = getSize();
 
+  // Рассчитываем прогресс кулдауна для бараков
+  const spawnCooldownProgress = building.type === "barracks" && building.spawnCooldown !== undefined
+    ? (() => {
+        const spawnInterval = getSpawnInterval(building.level);
+        const currentCooldown = building.spawnCooldown ?? spawnInterval;
+        const progress = Math.max(0, Math.min(100, ((spawnInterval - currentCooldown) / spawnInterval) * 100));
+        return progress;
+      })()
+    : null;
+
   return (
     <div
       className={cn(
@@ -79,6 +92,17 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
         height: size.height,
       }}
       onClick={onClick}>
+      {/* Подпись "Это Ваша крепость" для текущего игрока (только для замков) */}
+      {building.type === "castle" && isCurrentPlayer && (
+        <div
+          className={cn(
+            "absolute left-1/2 transform -translate-x-1/2 whitespace-nowrap text-xs font-bold text-white bg-blue-600/90 px-2 py-1 rounded shadow-lg border border-blue-400 z-30",
+            building.playerId === 2 ? "top-full mt-1" : "-top-6"
+          )}
+          style={{ fontSize: isMobile ? '10px' : '11px' }}>
+          Это Ваша крепость
+        </div>
+      )}
       {/* Здание */}
       <div
         className={cn(
@@ -130,6 +154,16 @@ export const BuildingComponent: React.FC<BuildingProps> = ({
             style={{ width: `${healthPercent}%` }}
           />
         </div>
+
+        {/* Полоса прогресса кулдауна спавна (только для бараков) - под полосой здоровья */}
+        {building.type === "barracks" && spawnCooldownProgress !== null && (
+          <div className="absolute -bottom-2 left-0 right-0 h-1.5 bg-gray-700 rounded overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all duration-100"
+              style={{ width: `${spawnCooldownProgress}%` }}
+            />
+          </div>
+        )}
 
         {/* Доступные юниты (для бараков) - внутри здания вверху справа */}
         {building.type === "barracks" &&

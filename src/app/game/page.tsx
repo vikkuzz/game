@@ -103,6 +103,7 @@ export default function GamePage() {
               gameState={gameState}
               selectedBuilding={gameState.selectedBuilding}
               onBuildingClick={handleBuildingClick}
+              selectedPlayer={gameState.selectedPlayer}
             />
           </div>
         </div>
@@ -262,6 +263,7 @@ export default function GamePage() {
               gameState={gameState}
               selectedBuilding={gameState.selectedBuilding}
               onBuildingClick={handleBuildingClick}
+              selectedPlayer={gameState.selectedPlayer}
             />
           </div>
 

@@ -10,12 +10,14 @@ interface GameMapProps {
   gameState: GameState;
   selectedBuilding: string | null;
   onBuildingClick: (buildingId: string) => void;
+  selectedPlayer?: PlayerId;
 }
 
 export const GameMap: React.FC<GameMapProps> = ({
   gameState,
   selectedBuilding,
   onBuildingClick,
+  selectedPlayer,
 }) => {
   const mapSize = GAME_CONFIG.mapSize;
   const center = mapSize / 2;
@@ -124,6 +126,7 @@ export const GameMap: React.FC<GameMapProps> = ({
                 onClick={() => onBuildingClick(player.castle.id)}
                 playerGold={player.gold}
                 playerGoldIncome={player.goldIncome}
+                isCurrentPlayer={selectedPlayer === player.id}
               />
               {player.barracks.map((barrack) => (
                 <BuildingComponent
