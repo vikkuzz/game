@@ -714,8 +714,8 @@ export function useGameState() {
                   );
                   if (upgradedTower) {
                     const newLevel = upgradedTower.level + 1;
-                    // Башни можно улучшать до 5 уровня
-                    if (newLevel > 5) {
+                    // Башни можно улучшать до 50 уровня
+                    if (newLevel > 50) {
                       return p;
                     }
                     return {
@@ -1058,7 +1058,7 @@ export function useGameState() {
             const upgradeableBuildings: Array<{ id: string }> = [];
 
             if (
-              player.castle.level < 5 &&
+              player.castle.level < 50 &&
               (!player.castle.upgradeCooldown ||
                 player.castle.upgradeCooldown <= 0)
             ) {
@@ -1068,7 +1068,7 @@ export function useGameState() {
             player.barracks.forEach((b) => {
               if (
                 b.health > 0 &&
-                b.level < 5 &&
+                b.level < 50 &&
                 (!b.upgradeCooldown || b.upgradeCooldown <= 0) &&
                 // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
                 !(b.level >= 2 && player.castle.level < 2)
@@ -1080,7 +1080,7 @@ export function useGameState() {
             player.towers.forEach((t) => {
               if (
                 t.health > 0 &&
-                t.level < 5 &&
+                t.level < 50 &&
                 (!t.upgradeCooldown || t.upgradeCooldown <= 0)
               ) {
                 upgradeableBuildings.push({ id: t.id });
@@ -1654,192 +1654,259 @@ export function useGameState() {
             allCastleStatsAtLevel2Check &&
             currentPlayer.castle.level >= 2
           ) {
-            // Потом случайно: статы замка, бараки или башни
-            // Проверяем доступные варианты улучшения
-            const upgradeableStats = castleStats.filter(
-              (stat) =>
-                currentPlayer.upgrades[stat] < 5 &&
-                !(
-                  currentPlayer.upgrades[stat] >= 2 &&
-                  currentPlayer.castle.level < 2
-                )
+            // Потом случайно: статы замка, замок, бараки или башни
+            // Проверяем доступные варианты улучшения с учетом стоимости
+            const affordableStats = castleStats.filter(
+              (stat) => {
+                const cost = (currentPlayer.upgrades[stat] + 1) * 150;
+                return (
+                  currentPlayer.upgrades[stat] < 50 &&
+                  currentPlayer.gold >= cost &&
+                  !(
+                    currentPlayer.upgrades[stat] >= 2 &&
+                    currentPlayer.castle.level < 2
+                  )
+                );
+              }
             );
-            const upgradeableBarracks2 = currentPlayer.barracks.filter(
-              (b) =>
-                b.health > 0 &&
-                b.level < 5 &&
-                (!b.upgradeCooldown || b.upgradeCooldown <= 0) &&
-                !(b.level >= 2 && currentPlayer.castle.level < 2)
+            
+            const affordableBarracks = currentPlayer.barracks.filter(
+              (b) => {
+                const upgradeCost = b.level * 200;
+                return (
+                  b.health > 0 &&
+                  b.level < 50 &&
+                  currentPlayer.gold >= upgradeCost &&
+                  (!b.upgradeCooldown || b.upgradeCooldown <= 0) &&
+                  !(b.level >= 2 && currentPlayer.castle.level < 2)
+                );
+              }
             );
-            const upgradeableTowers = currentPlayer.towers.filter(
-              (t) =>
-                t.health > 0 &&
-                t.level < 5 &&
-                (!t.upgradeCooldown || t.upgradeCooldown <= 0)
+            
+            const affordableTowers = currentPlayer.towers.filter(
+              (t) => {
+                const upgradeCost = t.level * 200;
+                return (
+                  t.health > 0 &&
+                  t.level < 50 &&
+                  currentPlayer.gold >= upgradeCost &&
+                  (!t.upgradeCooldown || t.upgradeCooldown <= 0)
+                );
+              }
             );
+            
+            const canUpgradeCastle =
+              currentPlayer.castle.level < 50 &&
+              currentPlayer.gold >= currentPlayer.castle.level * 200 &&
+              (!currentPlayer.castle.upgradeCooldown ||
+                currentPlayer.castle.upgradeCooldown <= 0);
 
             // Выбираем случайный доступный тип улучшения
             const availableOptions: string[] = [];
-            if (upgradeableStats.length > 0) availableOptions.push("stat");
-            if (upgradeableBarracks2.length > 0)
+            if (affordableStats.length > 0) availableOptions.push("stat");
+            if (canUpgradeCastle) availableOptions.push("castle");
+            if (affordableBarracks.length > 0)
               availableOptions.push("barrack");
-            if (upgradeableTowers.length > 0) availableOptions.push("tower");
+            if (affordableTowers.length > 0) availableOptions.push("tower");
 
             if (availableOptions.length === 0) {
               // Нет доступных улучшений
             } else {
-              const action =
-                availableOptions[
-                  Math.floor(Math.random() * availableOptions.length)
-                ];
-              if (action === "stat") {
-                // Прокачка стата замка
-                const stat =
-                  upgradeableStats[
-                    Math.floor(Math.random() * upgradeableStats.length)
-                  ];
-                const cost = (currentPlayer.upgrades[stat] + 1) * 150;
-                if (currentPlayer.gold >= cost) {
-                  const newUpgrades = { ...currentPlayer.upgrades };
-                  newUpgrades[stat] += 1;
-                  let newGoldIncome = currentPlayer.goldIncome;
-                  if (stat === "goldIncome") {
-                    newGoldIncome += 5;
+              // Перемешиваем опции для более случайного выбора
+              const shuffledOptions = availableOptions.sort(
+                () => Math.random() - 0.5
+              );
+              let upgradePerformed = false;
+
+              for (const action of shuffledOptions) {
+                if (upgradePerformed) break;
+
+                if (action === "stat") {
+                  // Прокачка стата замка
+                  const stat =
+                    affordableStats[
+                      Math.floor(Math.random() * affordableStats.length)
+                    ];
+                  const cost = (currentPlayer.upgrades[stat] + 1) * 150;
+                  if (currentPlayer.gold >= cost) {
+                    const newUpgrades = { ...currentPlayer.upgrades };
+                    newUpgrades[stat] += 1;
+                    let newGoldIncome = currentPlayer.goldIncome;
+                    if (stat === "goldIncome") {
+                      newGoldIncome += 5;
+                    }
+                    const buildingHealthBonus = newUpgrades.buildingHealth * 200;
+                    const buildingAttackBonus = newUpgrades.buildingAttack * 10;
+                    const healthIncrease = stat === "buildingHealth" ? 200 : 0;
+
+                    newState = {
+                      ...newState,
+                      players: newState.players.map((p) => {
+                        if (p.id === playerId) {
+                          const baseCastleHealth = 2000; // Исправлено с 3000
+                          const baseCastleAttack = 20; // Исправлено с 30
+                          const baseTowerHealth = 500; // Исправлено с 800
+                          const baseTowerAttack = 30; // Исправлено с 50
+                          const baseBarrackHealth = 1000; // Исправлено с 1500
+
+                          return {
+                            ...p,
+                            gold: p.gold - cost,
+                            goldIncome: newGoldIncome,
+                            upgrades: newUpgrades,
+                            castle: {
+                              ...p.castle,
+                              maxHealth: baseCastleHealth + buildingHealthBonus,
+                              health: Math.min(
+                                p.castle.health + healthIncrease,
+                                baseCastleHealth + buildingHealthBonus
+                              ),
+                              attack: baseCastleAttack + buildingAttackBonus,
+                            },
+                            barracks: p.barracks.map((b) => ({
+                              ...b,
+                              maxHealth: baseBarrackHealth + buildingHealthBonus,
+                              health: Math.min(
+                                b.health + healthIncrease,
+                                baseBarrackHealth + buildingHealthBonus
+                              ),
+                            })),
+                            towers: p.towers.map((t) => ({
+                              ...t,
+                              maxHealth: baseTowerHealth + buildingHealthBonus,
+                              health: Math.min(
+                                t.health + healthIncrease,
+                                baseTowerHealth + buildingHealthBonus
+                              ),
+                              attack: baseTowerAttack + buildingAttackBonus,
+                            })),
+                          };
+                        }
+                        return p;
+                      }),
+                    };
+                    stateChanged = true;
+                    upgradePerformed = true;
+                    continue;
                   }
-                  const buildingHealthBonus = newUpgrades.buildingHealth * 200;
-                  const buildingAttackBonus = newUpgrades.buildingAttack * 10;
-                  const healthIncrease = stat === "buildingHealth" ? 200 : 0;
-
-                  newState = {
-                    ...newState,
-                    players: newState.players.map((p) => {
-                      if (p.id === playerId) {
-                        const baseCastleHealth = 2000; // Исправлено с 3000
-                        const baseCastleAttack = 20; // Исправлено с 30
-                        const baseTowerHealth = 500; // Исправлено с 800
-                        const baseTowerAttack = 30; // Исправлено с 50
-                        const baseBarrackHealth = 1000; // Исправлено с 1500
-
-                        return {
-                          ...p,
-                          gold: p.gold - cost,
-                          goldIncome: newGoldIncome,
-                          upgrades: newUpgrades,
-                          castle: {
-                            ...p.castle,
-                            maxHealth: baseCastleHealth + buildingHealthBonus,
-                            health: Math.min(
-                              p.castle.health + healthIncrease,
-                              baseCastleHealth + buildingHealthBonus
+                } else if (action === "castle") {
+                  // Прокачка замка
+                  const upgradeCost = currentPlayer.castle.level * 200;
+                  if (
+                    currentPlayer.gold >= upgradeCost &&
+                    (!currentPlayer.castle.upgradeCooldown ||
+                      currentPlayer.castle.upgradeCooldown <= 0)
+                  ) {
+                    newState = {
+                      ...newState,
+                      players: newState.players.map((p) => {
+                        if (p.id === playerId) {
+                          return {
+                            ...p,
+                            gold: p.gold - upgradeCost,
+                            castle: {
+                              ...p.castle,
+                              level: p.castle.level + 1,
+                              maxHealth: p.castle.maxHealth + 200,
+                              health: Math.min(
+                                p.castle.health + 200,
+                                p.castle.maxHealth + 200
+                              ),
+                              upgradeCooldown: 5000,
+                            },
+                          };
+                        }
+                        return p;
+                      }),
+                    };
+                    stateChanged = true;
+                    upgradePerformed = true;
+                    continue;
+                  }
+                } else if (action === "barrack") {
+                  // Прокачка барака
+                  const barrack =
+                    affordableBarracks[
+                      Math.floor(Math.random() * affordableBarracks.length)
+                    ];
+                  const upgradeCost = barrack.level * 200;
+                  if (currentPlayer.gold >= upgradeCost) {
+                    const newSpawnInterval = getSpawnInterval(barrack.level + 1);
+                    newState = {
+                      ...newState,
+                      players: newState.players.map((p) => {
+                        if (p.id === playerId) {
+                          return {
+                            ...p,
+                            gold: p.gold - upgradeCost,
+                            barracks: p.barracks.map((b) =>
+                              b.id === barrack.id
+                                ? {
+                                    ...b,
+                                    level: b.level + 1,
+                                    maxHealth: b.maxHealth + 100,
+                                    health: Math.min(
+                                      b.health + 100,
+                                      b.maxHealth + 100
+                                    ),
+                                    maxAvailableUnits:
+                                      (b.maxAvailableUnits || 5) + 2,
+                                    upgradeCooldown: 5000,
+                                    spawnCooldown: Math.min(
+                                      b.spawnCooldown || newSpawnInterval,
+                                      newSpawnInterval
+                                    ),
+                                  }
+                                : b
                             ),
-                            attack: baseCastleAttack + buildingAttackBonus,
-                          },
-                          barracks: p.barracks.map((b) => ({
-                            ...b,
-                            maxHealth: baseBarrackHealth + buildingHealthBonus,
-                            health: Math.min(
-                              b.health + healthIncrease,
-                              baseBarrackHealth + buildingHealthBonus
+                          };
+                        }
+                        return p;
+                      }),
+                    };
+                    stateChanged = true;
+                    upgradePerformed = true;
+                    continue;
+                  }
+                } else if (action === "tower") {
+                  // Прокачка башни
+                  const tower =
+                    affordableTowers[
+                      Math.floor(Math.random() * affordableTowers.length)
+                    ];
+                  const upgradeCost = tower.level * 200;
+                  if (currentPlayer.gold >= upgradeCost) {
+                    newState = {
+                      ...newState,
+                      players: newState.players.map((p) => {
+                        if (p.id === playerId) {
+                          return {
+                            ...p,
+                            gold: p.gold - upgradeCost,
+                            towers: p.towers.map((t) =>
+                              t.id === tower.id
+                                ? {
+                                    ...t,
+                                    level: t.level + 1,
+                                    maxHealth: t.maxHealth + 100,
+                                    health: Math.min(
+                                      t.health + 100,
+                                      t.maxHealth + 100
+                                    ),
+                                    attack: (t.attack || 50) + 10,
+                                    upgradeCooldown: 5000,
+                                  }
+                                : t
                             ),
-                          })),
-                          towers: p.towers.map((t) => ({
-                            ...t,
-                            maxHealth: baseTowerHealth + buildingHealthBonus,
-                            health: Math.min(
-                              t.health + healthIncrease,
-                              baseTowerHealth + buildingHealthBonus
-                            ),
-                            attack: baseTowerAttack + buildingAttackBonus,
-                          })),
-                        };
-                      }
-                      return p;
-                    }),
-                  };
-                  stateChanged = true;
-                  continue;
-                }
-              } else if (action === "barrack") {
-                // Прокачка барака
-                const barrack =
-                  upgradeableBarracks2[
-                    Math.floor(Math.random() * upgradeableBarracks2.length)
-                  ];
-                const upgradeCost = barrack.level * 200;
-                if (currentPlayer.gold >= upgradeCost) {
-                  const newSpawnInterval = getSpawnInterval(barrack.level + 1);
-                  newState = {
-                    ...newState,
-                    players: newState.players.map((p) => {
-                      if (p.id === playerId) {
-                        return {
-                          ...p,
-                          gold: p.gold - upgradeCost,
-                          barracks: p.barracks.map((b) =>
-                            b.id === barrack.id
-                              ? {
-                                  ...b,
-                                  level: b.level + 1,
-                                  maxHealth: b.maxHealth + 100,
-                                  health: Math.min(
-                                    b.health + 100,
-                                    b.maxHealth + 100
-                                  ),
-                                  maxAvailableUnits:
-                                    (b.maxAvailableUnits || 5) + 2,
-                                  upgradeCooldown: 5000,
-                                  spawnCooldown: Math.min(
-                                    b.spawnCooldown || newSpawnInterval,
-                                    newSpawnInterval
-                                  ),
-                                }
-                              : b
-                          ),
-                        };
-                      }
-                      return p;
-                    }),
-                  };
-                  stateChanged = true;
-                  continue;
-                }
-              } else if (action === "tower") {
-                // Прокачка башни
-                const tower =
-                  upgradeableTowers[
-                    Math.floor(Math.random() * upgradeableTowers.length)
-                  ];
-                const upgradeCost = tower.level * 200;
-                if (currentPlayer.gold >= upgradeCost) {
-                  newState = {
-                    ...newState,
-                    players: newState.players.map((p) => {
-                      if (p.id === playerId) {
-                        return {
-                          ...p,
-                          gold: p.gold - upgradeCost,
-                          towers: p.towers.map((t) =>
-                            t.id === tower.id
-                              ? {
-                                  ...t,
-                                  level: t.level + 1,
-                                  maxHealth: t.maxHealth + 100,
-                                  health: Math.min(
-                                    t.health + 100,
-                                    t.maxHealth + 100
-                                  ),
-                                  attack: (t.attack || 50) + 10,
-                                  upgradeCooldown: 5000,
-                                }
-                              : t
-                          ),
-                        };
-                      }
-                      return p;
-                    }),
-                  };
-                  stateChanged = true;
-                  continue;
+                          };
+                        }
+                        return p;
+                      }),
+                    };
+                    stateChanged = true;
+                    upgradePerformed = true;
+                    continue;
+                  }
                 }
               }
             }
