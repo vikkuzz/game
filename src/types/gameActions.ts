@@ -12,7 +12,8 @@ export type GameActionType =
   | "upgradeCastleStat"
   | "togglePause"
   | "toggleAutoUpgrade"
-  | "setGameSpeed";
+  | "setGameSpeed"
+  | "voteForSpeed";
 
 export interface GameAction {
   type: GameActionType;
@@ -63,6 +64,13 @@ export interface ToggleAutoUpgradeAction extends GameAction {
 
 export interface SetGameSpeedAction extends GameAction {
   type: "setGameSpeed";
+  data: {
+    speed: number;
+  };
+}
+
+export interface VoteForSpeedAction extends GameAction {
+  type: "voteForSpeed";
   data: {
     speed: number;
   };

@@ -14,6 +14,7 @@ interface GameRoom {
   mode: string;
   lastUpdate: number;
   aiSlots: Set<PlayerId>; // Слоты, занятые ИИ игроками
+  speedVotes: Map<PlayerId, number>; // Голоса игроков за скорость (playerId -> speed)
 }
 
 class GameServer {
@@ -57,6 +58,7 @@ class GameServer {
       mode: lobby.mode,
       lastUpdate: Date.now(),
       aiSlots,
+      speedVotes: new Map<PlayerId, number>(), // Инициализируем систему голосования
     };
 
     this.games.set(lobbyId, room);
@@ -200,6 +202,75 @@ class GameServer {
   isAISlot(roomId: string, playerId: PlayerId): boolean {
     const room = this.games.get(roomId);
     return room ? room.aiSlots.has(playerId) : false;
+  }
+
+  /**
+   * Добавляет голос игрока за скорость
+   */
+  voteForSpeed(roomId: string, playerId: PlayerId, speed: number): boolean {
+    const room = this.games.get(roomId);
+    if (!room) return false;
+    
+    // ИИ игроки не могут голосовать
+    if (room.aiSlots.has(playerId)) {
+      return false;
+    }
+    
+    room.speedVotes.set(playerId, speed);
+    return true;
+  }
+
+  /**
+   * Проверяет, все ли живые игроки проголосовали за скорость
+   * Если да, применяет скорость и очищает голоса
+   */
+  checkAndApplySpeedVote(roomId: string): { applied: boolean; speed?: number } {
+    const room = this.games.get(roomId);
+    if (!room) return { applied: false };
+    
+    // Получаем всех живых реальных игроков (не ИИ)
+    const aliveHumanPlayers = room.gameState.players
+      .map((p, idx) => ({ player: p, id: idx as PlayerId }))
+      .filter(({ player, id }) => player.isActive && !room.aiSlots.has(id));
+    
+    if (aliveHumanPlayers.length === 0) {
+      return { applied: false };
+    }
+    
+    // Проверяем, все ли живые игроки проголосовали
+    const allVoted = aliveHumanPlayers.every(({ id }) => room.speedVotes.has(id));
+    
+    if (!allVoted) {
+      return { applied: false };
+    }
+    
+    // Проверяем, все ли голоса одинаковые
+    const votes = aliveHumanPlayers.map(({ id }) => room.speedVotes.get(id)!);
+    const allSameSpeed = votes.every(speed => speed === votes[0]);
+    
+    if (allSameSpeed) {
+      // Все проголосовали за одну скорость - применяем
+      const newSpeed = votes[0];
+      room.gameState = {
+        ...room.gameState,
+        gameSpeed: newSpeed,
+      };
+      // Очищаем голоса
+      room.speedVotes.clear();
+      return { applied: true, speed: newSpeed };
+    }
+    
+    // Голоса разные - не применяем, но очищаем голоса для нового раунда
+    room.speedVotes.clear();
+    return { applied: false };
+  }
+
+  /**
+   * Получает текущие голоса за скорость
+   */
+  getSpeedVotes(roomId: string): Map<PlayerId, number> {
+    const room = this.games.get(roomId);
+    return room ? new Map(room.speedVotes) : new Map();
   }
 }
 

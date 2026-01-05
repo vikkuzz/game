@@ -225,8 +225,16 @@ function GamePageContent() {
           localGame.toggleAutoUpgrade();
         },
         setGameSpeed: (speed: number) => {
-          networkGame.setGameSpeed(speed);
-          localGame.setGameSpeed(speed);
+          // В сетевом режиме отправляем голос вместо прямого изменения скорости
+          // Прямое изменение применяется только локально для отображения
+          if (networkGame.gameState) {
+            // Отправляем голос на сервер
+            networkGame.voteForSpeed?.(speed);
+          }
+          // В локальном режиме применяем сразу
+          if (!isNetworkMode) {
+            localGame.setGameSpeed(speed);
+          }
         },
         selectPlayer: (playerId: PlayerId) => {
           // В сетевом режиме запрещаем переключение между игроками
@@ -328,28 +336,38 @@ function GamePageContent() {
                 className="text-xs px-2 py-1">
                 {gameState.isPaused ? "▶" : "⏸"}
               </Button>
-              <div className="flex gap-1">
-                <Button
-                  onClick={() => setGameSpeed(0.5)}
-                  variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
-                  size="sm"
-                  className="text-xs px-2 py-1">
-                  0.5x
-                </Button>
-                <Button
-                  onClick={() => setGameSpeed(1)}
-                  variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
-                  size="sm"
-                  className="text-xs px-2 py-1">
-                  1x
-                </Button>
-                <Button
-                  onClick={() => setGameSpeed(2)}
-                  variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
-                  size="sm"
-                  className="text-xs px-2 py-1">
-                  2x
-                </Button>
+              <div className="flex gap-1 flex-col">
+                <div className="flex gap-1">
+                  <Button
+                    onClick={() => setGameSpeed(0.5)}
+                    variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
+                    size="sm"
+                    className="text-xs px-2 py-1"
+                    disabled={isNetworkMode && gameState.gameSpeed !== 0.5 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 0.5)}>
+                    0.5x
+                  </Button>
+                  <Button
+                    onClick={() => setGameSpeed(1)}
+                    variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
+                    size="sm"
+                    className="text-xs px-2 py-1"
+                    disabled={isNetworkMode && gameState.gameSpeed !== 1 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 1)}>
+                    1x
+                  </Button>
+                  <Button
+                    onClick={() => setGameSpeed(2)}
+                    variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
+                    size="sm"
+                    className="text-xs px-2 py-1"
+                    disabled={isNetworkMode && gameState.gameSpeed !== 2 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 2)}>
+                    2x
+                  </Button>
+                </div>
+                {isNetworkMode && networkGame.speedVotes && Object.keys(networkGame.speedVotes).length > 0 && (
+                  <div className="text-xs text-gray-400 mt-1">
+                    Голосов: {Object.keys(networkGame.speedVotes).length} / {gameState.players.filter((p, idx) => p.isActive && !networkGame.aiSlots?.includes(idx as PlayerId)).length}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -442,28 +460,38 @@ function GamePageContent() {
               className="flex-1 md:flex-none">
               {gameState.isPaused ? "▶ Продолжить" : "⏸ Пауза"}
             </Button>
-            <div className="flex gap-1">
-              <Button
-                onClick={() => setGameSpeed(0.5)}
-                variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
-                size="sm"
-                className="text-xs px-2">
-                0.5x
-              </Button>
-              <Button
-                onClick={() => setGameSpeed(1)}
-                variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
-                size="sm"
-                className="text-xs px-2">
-                1x
-              </Button>
-              <Button
-                onClick={() => setGameSpeed(2)}
-                variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
-                size="sm"
-                className="text-xs px-2">
-                2x
-              </Button>
+            <div className="flex gap-1 flex-col">
+              <div className="flex gap-1">
+                <Button
+                  onClick={() => setGameSpeed(0.5)}
+                  variant={gameState.gameSpeed === 0.5 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2"
+                  disabled={isNetworkMode && gameState.gameSpeed !== 0.5 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 0.5)}>
+                  0.5x
+                </Button>
+                <Button
+                  onClick={() => setGameSpeed(1)}
+                  variant={gameState.gameSpeed === 1 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2"
+                  disabled={isNetworkMode && gameState.gameSpeed !== 1 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 1)}>
+                  1x
+                </Button>
+                <Button
+                  onClick={() => setGameSpeed(2)}
+                  variant={gameState.gameSpeed === 2 ? "primary" : "secondary"}
+                  size="sm"
+                  className="text-xs px-2"
+                  disabled={isNetworkMode && gameState.gameSpeed !== 2 && myPlayerId !== null && (networkGame.speedVotes?.[myPlayerId] === 2)}>
+                  2x
+                </Button>
+              </div>
+              {isNetworkMode && networkGame.speedVotes && Object.keys(networkGame.speedVotes).length > 0 && (
+                <div className="text-xs text-gray-400 text-center">
+                  Голосов за ускорение: {Object.keys(networkGame.speedVotes).length} / {gameState.players.filter((p, idx) => p.isActive && !networkGame.aiSlots?.includes(idx as PlayerId)).length}
+                </div>
+              )}
             </div>
           </div>
         </div>

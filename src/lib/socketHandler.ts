@@ -146,6 +146,40 @@ export default function socketHandler(io: SocketIOServer) {
           return;
         }
 
+        // Специальная обработка голосования за скорость
+        if (data.action.type === "voteForSpeed") {
+          const speed = data.action.data.speed;
+          const voted = gameServer.voteForSpeed(data.roomId, playerId, speed);
+          
+          if (voted) {
+            // Проверяем, все ли проголосовали
+            const voteResult = gameServer.checkAndApplySpeedVote(data.roomId);
+            
+            // Отправляем обновление голосов всем игрокам
+            const speedVotes = gameServer.getSpeedVotes(data.roomId);
+            io.to(data.roomId).emit("game:speedVotes", {
+              votes: Object.fromEntries(speedVotes),
+              applied: voteResult.applied,
+              newSpeed: voteResult.speed,
+            });
+            
+            // Если скорость применена, отправляем обновленное состояние
+            if (voteResult.applied) {
+              const updatedRoom = gameServer.getGame(data.roomId);
+              if (updatedRoom) {
+                const aiSlots = Array.from(updatedRoom.aiSlots);
+                const playerSlotMap = Object.fromEntries(updatedRoom.playerSlotMap);
+                io.to(data.roomId).emit("game:state", {
+                  gameState: updatedRoom.gameState,
+                  aiSlots: aiSlots,
+                  playerSlotMap: playerSlotMap,
+                });
+              }
+            }
+          }
+          return;
+        }
+
         // Обрабатываем действие на сервере (валидация)
         const newGameState = handleGameAction(
           room.gameState,

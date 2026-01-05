@@ -21,6 +21,7 @@ interface UseNetworkGameStateReturn {
   isConnected: boolean;
   myPlayerId: PlayerId | null;
   aiSlots: PlayerId[];
+  speedVotes: Record<PlayerId, number>;
   buyUnit: (playerId: PlayerId, barrackId: string, unitType: UnitType) => void;
   upgradeBuilding: (playerId: PlayerId, buildingId: string) => void;
   repairBuilding: (playerId: PlayerId, buildingId: string) => void;
@@ -28,6 +29,7 @@ interface UseNetworkGameStateReturn {
   togglePause: () => void;
   toggleAutoUpgrade: () => void;
   setGameSpeed: (speed: number) => void;
+  voteForSpeed?: (speed: number) => void;
   selectPlayer: (playerId: PlayerId) => void;
   selectBuilding: (buildingId: string | null) => void;
 }
@@ -46,6 +48,7 @@ export function useNetworkGameState({
   const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
   const [currentPlayerSlotMap, setCurrentPlayerSlotMap] = useState<Record<string, PlayerId>>(initialPlayerSlotMap);
   const [aiSlots, setAiSlots] = useState<PlayerId[]>(initialAiSlots);
+  const [speedVotes, setSpeedVotes] = useState<Record<PlayerId, number>>({} as Record<PlayerId, number>);
   
   // Обновляем playerSlotMap при получении обновлений от сервера
   useEffect(() => {
@@ -205,6 +208,29 @@ export function useNetworkGameState({
     };
   }, [socket]);
 
+  // Обработка обновлений голосования за скорость
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleSpeedVotes = (data: { 
+      votes: Record<PlayerId, number>; 
+      applied: boolean; 
+      newSpeed?: number;
+    }) => {
+      setSpeedVotes(data.votes);
+      if (data.applied && data.newSpeed !== undefined) {
+        // Скорость применена - обновляем локальное состояние
+        setGameState((prev) => prev ? { ...prev, gameSpeed: data.newSpeed! } : null);
+      }
+    };
+
+    socket.on("game:speedVotes", handleSpeedVotes);
+
+    return () => {
+      socket.off("game:speedVotes", handleSpeedVotes);
+    };
+  }, [socket]);
+
   const buyUnit = useCallback(
     (playerId: PlayerId, barrackId: string, unitType: UnitType) => {
       if (playerId !== myPlayerId) {
@@ -295,15 +321,24 @@ export function useNetworkGameState({
 
   const setGameSpeed = useCallback(
     (speed: number) => {
+      // В сетевом режиме отправляем голос вместо прямого изменения
       sendAction({
-        type: "setGameSpeed",
+        type: "voteForSpeed",
         playerId: myPlayerId!,
         data: { speed },
         timestamp: Date.now(),
-        actionId: `setGameSpeed-${Date.now()}-${Math.random()}`,
+        actionId: `voteForSpeed-${Date.now()}-${Math.random()}`,
       });
     },
     [myPlayerId, sendAction]
+  );
+
+  const voteForSpeed = useCallback(
+    (speed: number) => {
+      // Публичный метод для голосования за скорость
+      setGameSpeed(speed);
+    },
+    [setGameSpeed]
   );
 
   const selectPlayer = useCallback((playerId: PlayerId) => {
@@ -330,6 +365,7 @@ export function useNetworkGameState({
     isConnected,
     myPlayerId,
     aiSlots,
+    speedVotes,
     buyUnit,
     upgradeBuilding,
     repairBuilding,
@@ -337,6 +373,7 @@ export function useNetworkGameState({
     togglePause,
     toggleAutoUpgrade,
     setGameSpeed,
+    voteForSpeed,
     selectPlayer,
     selectBuilding,
   };

@@ -51,11 +51,16 @@ export function handleGameAction(
         isPaused: !gameState.isPaused,
       };
     case "setGameSpeed":
-      // Скорость игры - глобальное действие
+      // Скорость игры - глобальное действие (только для локального режима)
+      // В сетевом режиме используется voteForSpeed
       return {
         ...gameState,
         gameSpeed: action.data.speed,
       };
+    case "voteForSpeed":
+      // Голосование за скорость - не изменяет состояние напрямую
+      // Обрабатывается на уровне gameServer
+      return gameState;
     case "toggleAutoUpgrade":
       // Автопрокачка - локальное действие игрока, не требует обработки на сервере
       return gameState;
