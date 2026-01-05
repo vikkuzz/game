@@ -8,13 +8,16 @@ import { Section } from "@/components/Section";
 import { Heading } from "@/components/Heading";
 import type { GameMode } from "@/types/lobby";
 import type { PlayerId } from "@/types/game";
+import { generatePlayerName } from "@/lib/playerNameGenerator";
 
 /**
  * Страница лобби для сетевой игры
  */
+const PLAYER_NAME_STORAGE_KEY = "gamePlayerName";
+
 export default function LobbyPage() {
   const router = useRouter();
-  const { socket, isConnected, lobby, error, createLobby, joinLobby, leaveLobby, toggleReady } = useSocket();
+  const { socket, isConnected, lobby, error, activeLobbies, createLobby, joinLobby, leaveLobby, toggleReady, refreshLobbyList } = useSocket();
   const [playerName, setPlayerName] = useState("");
   const [lobbyIdInput, setLobbyIdInput] = useState("");
   const [selectedMode, setSelectedMode] = useState<GameMode>("1v1v1v1");
@@ -22,6 +25,39 @@ export default function LobbyPage() {
     lobby: any;
     playerSlotMap: Record<string, PlayerId>;
   } | null>(null);
+
+  // Загружаем сохраненное имя или генерируем новое
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedName = localStorage.getItem(PLAYER_NAME_STORAGE_KEY);
+      if (savedName) {
+        setPlayerName(savedName);
+      } else {
+        const generatedName = generatePlayerName();
+        setPlayerName(generatedName);
+        localStorage.setItem(PLAYER_NAME_STORAGE_KEY, generatedName);
+      }
+    }
+  }, []);
+
+  // Сохраняем имя при изменении
+  useEffect(() => {
+    if (playerName && typeof window !== "undefined") {
+      localStorage.setItem(PLAYER_NAME_STORAGE_KEY, playerName);
+    }
+  }, [playerName]);
+
+  // Запрашиваем список активных лобби при подключении
+  useEffect(() => {
+    if (isConnected && !lobby) {
+      refreshLobbyList();
+      // Обновляем список каждые 5 секунд
+      const interval = setInterval(() => {
+        refreshLobbyList();
+      }, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [isConnected, lobby, refreshLobbyList]);
 
   // Обработка начала игры
   useEffect(() => {
@@ -46,23 +82,34 @@ export default function LobbyPage() {
   }, [socket, router]);
 
   const handleCreateLobby = () => {
-    if (!playerName.trim()) {
-      alert("Введите имя игрока");
+    const name = playerName.trim() || generatePlayerName();
+    if (!name) {
+      const generatedName = generatePlayerName();
+      setPlayerName(generatedName);
+      createLobby(selectedMode, generatedName);
       return;
     }
-    createLobby(selectedMode, playerName.trim());
+    createLobby(selectedMode, name);
   };
 
-  const handleJoinLobby = () => {
-    if (!playerName.trim()) {
-      alert("Введите имя игрока");
+  const handleJoinLobby = (lobbyId?: string) => {
+    const name = playerName.trim() || generatePlayerName();
+    if (!name) {
+      const generatedName = generatePlayerName();
+      setPlayerName(generatedName);
+      if (lobbyId) {
+        joinLobby(lobbyId, generatedName);
+      } else if (lobbyIdInput.trim()) {
+        joinLobby(lobbyIdInput.trim().toUpperCase(), generatedName);
+      }
       return;
     }
-    if (!lobbyIdInput.trim()) {
+    const targetLobbyId = lobbyId || lobbyIdInput.trim().toUpperCase();
+    if (!targetLobbyId) {
       alert("Введите ID лобби");
       return;
     }
-    joinLobby(lobbyIdInput.trim().toUpperCase(), playerName.trim());
+    joinLobby(targetLobbyId, name);
   };
 
   const handleLeaveLobby = () => {
@@ -262,10 +309,56 @@ export default function LobbyPage() {
             </Button>
           </div>
 
-          {/* Присоединение к лобби */}
+          {/* Список активных лобби */}
+          {activeLobbies.length > 0 && (
+            <div className="mb-6 p-4 bg-gray-700/30 rounded-lg border border-gray-600">
+              <Heading level={2} className="text-white text-lg mb-4">
+                Активные лобби ({activeLobbies.length})
+              </Heading>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {activeLobbies.map((activeLobby) => (
+                  <div
+                    key={activeLobby.id}
+                    onClick={() => handleJoinLobby(activeLobby.id)}
+                    className="p-3 bg-gray-600/50 rounded-lg border border-gray-500 hover:bg-gray-600/70 cursor-pointer transition-colors">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-white font-semibold">
+                          {activeLobby.id}
+                        </div>
+                        <div className="text-gray-400 text-sm">
+                          {getGameModeName(activeLobby.mode)} • {activeLobby.players.length}/{activeLobby.maxPlayers} игроков
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-green-400 text-sm font-semibold">
+                          Присоединиться
+                        </div>
+                        {activeLobby.players.length > 0 && (
+                          <div className="text-gray-400 text-xs mt-1">
+                            {activeLobby.players.map(p => p.name).join(", ")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button
+                onClick={refreshLobbyList}
+                variant="secondary"
+                size="sm"
+                className="w-full mt-2"
+                disabled={!isConnected}>
+                Обновить список
+              </Button>
+            </div>
+          )}
+
+          {/* Присоединение к лобби по ID */}
           <div className="mb-6 p-4 bg-gray-700/30 rounded-lg border border-gray-600">
             <Heading level={2} className="text-white text-lg mb-4">
-              Присоединиться к лобби
+              Присоединиться по ID
             </Heading>
 
             <div className="mb-4">
@@ -281,7 +374,7 @@ export default function LobbyPage() {
             </div>
 
             <Button
-              onClick={handleJoinLobby}
+              onClick={() => handleJoinLobby()}
               variant="secondary"
               className="w-full"
               disabled={!isConnected}>

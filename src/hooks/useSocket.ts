@@ -12,10 +12,12 @@ interface UseSocketReturn {
   isConnected: boolean;
   lobby: Lobby | null;
   error: string | null;
+  activeLobbies: Lobby[];
   createLobby: (mode: GameMode, playerName: string) => void;
   joinLobby: (lobbyId: string, playerName: string) => void;
   leaveLobby: (lobbyId: string) => void;
   toggleReady: (lobbyId: string) => void;
+  refreshLobbyList: () => void;
 }
 
 export function useSocket(): UseSocketReturn {
@@ -23,6 +25,7 @@ export function useSocket(): UseSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [lobby, setLobby] = useState<Lobby | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activeLobbies, setActiveLobbies] = useState<Lobby[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -111,6 +114,12 @@ export function useSocket(): UseSocketReturn {
       // Это событие будет обработано в компоненте игры
     });
 
+    // Обработчик списка активных лобби
+    newSocket.on("lobby:list", (data: { lobbies: Lobby[] }) => {
+      console.log("Active lobbies received:", data.lobbies);
+      setActiveLobbies(data.lobbies);
+    });
+
     // Очистка при размонтировании
     return () => {
       newSocket.close();
@@ -162,15 +171,24 @@ export function useSocket(): UseSocketReturn {
     []
   );
 
+  const refreshLobbyList = useCallback(() => {
+    if (!socketRef.current || !socketRef.current.connected) {
+      return;
+    }
+    socketRef.current.emit("lobby:list");
+  }, []);
+
   return {
     socket: socketRef.current,
     isConnected,
     lobby,
     error,
+    activeLobbies,
     createLobby,
     joinLobby,
     leaveLobby,
     toggleReady,
+    refreshLobbyList,
   };
 }
 

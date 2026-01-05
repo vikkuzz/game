@@ -72,13 +72,8 @@ class LobbyManager {
       isReady: false,
     });
 
-    // Если лобби заполнено, запускаем таймер через 15 секунд
-    if (lobby.players.length === lobby.maxPlayers && !lobby.isStarting) {
-      // Запускаем таймер через небольшую задержку, чтобы дать время клиентам обновиться
-      setTimeout(() => {
-        this.startCountdown(lobbyId);
-      }, 100);
-    }
+    // НЕ запускаем таймер автоматически при заполнении лобби
+    // Таймер должен запускаться только когда все игроки готовы (через toggleReady)
 
     return lobby;
   }
@@ -119,6 +114,15 @@ class LobbyManager {
    */
   getLobby(lobbyId: string): Lobby | null {
     return this.lobbies[lobbyId] || null;
+  }
+
+  /**
+   * Получает список всех активных лобби (не начатых игр)
+   */
+  getActiveLobbies(): Lobby[] {
+    return Object.values(this.lobbies).filter(
+      (lobby) => !lobby.gameStarted && lobby.players.length < lobby.maxPlayers
+    );
   }
 
   /**

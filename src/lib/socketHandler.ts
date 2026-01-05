@@ -120,6 +120,17 @@ export default function socketHandler(io: SocketIOServer) {
       }
     });
 
+    // Получение списка активных лобби
+    socket.on("lobby:list", () => {
+      try {
+        const activeLobbies = lobbyManager.getActiveLobbies();
+        socket.emit("lobby:list", { lobbies: activeLobbies });
+      } catch (error) {
+        console.error("Error getting lobby list:", error);
+        socket.emit("lobby:error", { message: "Failed to get lobby list" });
+      }
+    });
+
     // Игровые действия
     socket.on("game:action", (data: { roomId: string; action: any }) => {
       try {

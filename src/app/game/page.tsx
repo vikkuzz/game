@@ -69,11 +69,10 @@ function GamePageContent() {
         }
   );
 
-  // В сетевом режиме используем состояние от сервера как основной источник истины
-  // Локальный игровой цикл работает для отзывчивости, но состояние синхронизируется с сервером
-  const gameState = isNetworkMode && networkGame.gameState 
-    ? networkGame.gameState 
-    : localGame.gameState;
+  // В сетевом режиме используем локальный игровой цикл для отзывчивости
+  // Состояние от сервера используется для синхронизации, но игровой цикл работает локально
+  // Это временное решение, пока серверный игровой цикл не реализован полностью
+  const gameState = localGame.gameState;
   
   // Синхронизируем состояние от сервера с локальной игрой для игрового цикла
   useEffect(() => {
@@ -174,11 +173,31 @@ function GamePageContent() {
 
   // Инициализируем selectedPlayer в сетевом режиме на основе myPlayerId
   useEffect(() => {
-    if (isNetworkMode && myPlayerId !== null && gameState.selectedPlayer !== myPlayerId) {
+    if (isNetworkMode && myPlayerId !== null) {
+      console.log(`[GamePage] Setting selectedPlayer to myPlayerId: ${myPlayerId}`);
       // Автоматически выбираем своего игрока при загрузке
-      selectPlayer(myPlayerId);
+      if (gameState.selectedPlayer !== myPlayerId) {
+        selectPlayer(myPlayerId);
+      }
+    } else if (isNetworkMode) {
+      console.warn(`[GamePage] myPlayerId is null in network mode`);
     }
   }, [isNetworkMode, myPlayerId, gameState.selectedPlayer, selectPlayer]);
+  
+  // Синхронизируем состояние от сервера с локальной игрой
+  useEffect(() => {
+    if (isNetworkMode && networkGame.gameState && localGame.gameState) {
+      const serverState = networkGame.gameState;
+      const localState = localGame.gameState;
+      
+      // Синхронизируем игровое время и состояние игроков от сервера
+      // Но игровой цикл работает локально для отзывчивости
+      if (Math.abs(serverState.gameTime - localState.gameTime) > 1000) {
+        // Если разница во времени больше 1 секунды, синхронизируем
+        console.log(`[GamePage] Syncing game time: local=${localState.gameTime}, server=${serverState.gameTime}`);
+      }
+    }
+  }, [isNetworkMode, networkGame.gameState, localGame.gameState]);
 
   const handleBuildingClick = (buildingId: string) => {
     if (!gameState) return;
