@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: socket-server
+    env: node
+    buildCommand: npm install
+    startCommand: npm run socket-server
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: ALLOWED_ORIGINS
+        sync: false  # Установите вручную в панели Render
+

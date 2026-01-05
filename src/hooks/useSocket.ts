@@ -27,12 +27,20 @@ export function useSocket(): UseSocketReturn {
 
   useEffect(() => {
     // Создаем подключение к серверу
+    // В продакшене используем NEXT_PUBLIC_SOCKET_URL (отдельный Socket.IO сервер)
+    // В разработке используем текущий origin (локальный сервер)
     const socketUrl =
       typeof window !== "undefined"
-        ? window.location.origin
+        ? process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin
         : process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000";
+    
+    console.log("[useSocket] Connecting to Socket.IO server:", socketUrl);
+    
     const newSocket = io(socketUrl, {
       transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
     });
 
     socketRef.current = newSocket;
