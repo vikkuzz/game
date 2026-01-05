@@ -50,34 +50,45 @@ export function useNetworkGameState({
   
   // Определяем PlayerId текущего игрока
   useEffect(() => {
+    // Сначала пытаемся найти playerId по текущему socket ID
     if (socketId && currentPlayerSlotMap[socketId] !== undefined) {
       const assignedPlayerId = currentPlayerSlotMap[socketId];
       console.log(`[useNetworkGameState] Player slot assignment - socketId: ${socketId}, playerId: ${assignedPlayerId}, playerSlotMap:`, currentPlayerSlotMap);
       setMyPlayerId(assignedPlayerId);
       setSelectedPlayer(assignedPlayerId);
       // Сохраняем playerId в sessionStorage для использования при переподключении
-      if (typeof window !== "undefined") {
+      if (typeof window !== "undefined" && lobbyId) {
         sessionStorage.setItem(`playerId_${lobbyId}`, String(assignedPlayerId));
       }
     } else {
-      console.warn(`[useNetworkGameState] Cannot determine playerId - socketId: ${socketId}, playerSlotMap:`, currentPlayerSlotMap);
-      // Пытаемся восстановить playerId из sessionStorage (на случай переподключения)
+      // Если socket ID не найден, пытаемся восстановить playerId из sessionStorage
+      // Это важно при переподключении, когда socket ID меняется
       if (typeof window !== "undefined" && lobbyId) {
         const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
         if (savedPlayerId !== null) {
           const playerId = parseInt(savedPlayerId, 10) as PlayerId;
-          console.log(`[useNetworkGameState] Restored playerId from sessionStorage: ${playerId}`);
+          console.log(`[useNetworkGameState] Restored playerId from sessionStorage: ${playerId} (socketId: ${socketId}, playerSlotMap:`, currentPlayerSlotMap, ")");
           setMyPlayerId(playerId);
           setSelectedPlayer(playerId);
-          // Пытаемся обновить playerSlotMap на сервере
-          if (socket && isConnected) {
-            socket.emit("game:reconnect", { 
-              roomId: lobbyId,
-              previousSocketId: Object.keys(currentPlayerSlotMap).find(
-                key => currentPlayerSlotMap[key] === playerId
-              )
-            });
+          
+          // Пытаемся обновить playerSlotMap на сервере при переподключении
+          if (socket && isConnected && socketId) {
+            // Находим старый socket ID по playerId
+            const oldSocketId = Object.keys(currentPlayerSlotMap).find(
+              key => currentPlayerSlotMap[key] === playerId
+            );
+            
+            if (oldSocketId && oldSocketId !== socketId) {
+              console.log(`[useNetworkGameState] Attempting to reconnect - oldSocketId: ${oldSocketId}, newSocketId: ${socketId}, playerId: ${playerId}`);
+              socket.emit("game:reconnect", { 
+                roomId: lobbyId,
+                previousSocketId: oldSocketId,
+                playerId: playerId
+              });
+            }
           }
+        } else {
+          console.warn(`[useNetworkGameState] Cannot determine playerId - socketId: ${socketId}, playerSlotMap:`, currentPlayerSlotMap, "no saved playerId in sessionStorage");
         }
       }
     }
@@ -110,6 +121,31 @@ export function useNetworkGameState({
         // Обновляем playerSlotMap при получении обновления от сервера
         // Это важно при переподключении или если сервер обновил маппинг
         setCurrentPlayerSlotMap(data.playerSlotMap);
+        
+        // Если у нас есть socket ID, пытаемся определить playerId
+        // Если socket ID не найден, используем сохраненный playerId
+        if (socket?.id) {
+          const playerIdFromMap = data.playerSlotMap[socket.id];
+          if (playerIdFromMap !== undefined) {
+            console.log(`[useNetworkGameState] Found playerId ${playerIdFromMap} for socket ${socket.id} in updated playerSlotMap`);
+            setMyPlayerId(playerIdFromMap);
+            setSelectedPlayer(playerIdFromMap);
+            if (typeof window !== "undefined" && lobbyId) {
+              sessionStorage.setItem(`playerId_${lobbyId}`, String(playerIdFromMap));
+            }
+          } else {
+            // Если socket ID не найден, пытаемся использовать сохраненный playerId
+            if (typeof window !== "undefined" && lobbyId) {
+              const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
+              if (savedPlayerId !== null) {
+                const playerId = parseInt(savedPlayerId, 10) as PlayerId;
+                console.log(`[useNetworkGameState] Using saved playerId ${playerId} (socket ${socket.id} not in playerSlotMap)`);
+                setMyPlayerId(playerId);
+                setSelectedPlayer(playerId);
+              }
+            }
+          }
+        }
       }
       // Обновляем состояние игры полностью от сервера (это источник истины)
       setGameState(data.gameState);

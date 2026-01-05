@@ -142,6 +142,24 @@ class GameServer {
   }
 
   /**
+   * Добавляет или обновляет socket ID для игрока
+   */
+  setPlayerSocketId(roomId: string, socketId: string, playerId: PlayerId): boolean {
+    const room = this.games.get(roomId);
+    if (!room) return false;
+    
+    // Удаляем старый socket ID для этого playerId, если есть
+    const oldSocketId = this.findSocketIdByPlayerId(roomId, playerId);
+    if (oldSocketId && oldSocketId !== socketId) {
+      room.playerSlotMap.delete(oldSocketId);
+    }
+    
+    // Добавляем новый socket ID
+    room.playerSlotMap.set(socketId, playerId);
+    return true;
+  }
+
+  /**
    * Обновляет состояние игры
    */
   updateGameState(roomId: string, newState: GameState): void {

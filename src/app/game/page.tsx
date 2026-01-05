@@ -104,8 +104,22 @@ function GamePageContent() {
   }, [isNetworkMode, networkGame.gameState, localGame.gameState]);
   
   // Определяем myPlayerId для сетевого режима
+  // Используем сохраненный playerId из sessionStorage, если networkGame.myPlayerId не определен
+  const [savedPlayerId, setSavedPlayerId] = useState<PlayerId | null>(null);
+  
+  useEffect(() => {
+    if (isNetworkMode && lobbyId && typeof window !== "undefined") {
+      const saved = sessionStorage.getItem(`playerId_${lobbyId}`);
+      if (saved) {
+        const playerId = parseInt(saved, 10) as PlayerId;
+        setSavedPlayerId(playerId);
+        console.log(`[GamePage] Loaded saved playerId from sessionStorage: ${playerId}`);
+      }
+    }
+  }, [isNetworkMode, lobbyId]);
+  
   const myPlayerId = isNetworkMode && networkGameData
-    ? networkGame.myPlayerId
+    ? (networkGame.myPlayerId ?? savedPlayerId)
     : null;
 
   // В сетевом режиме используем сетевые действия для отправки на сервер,

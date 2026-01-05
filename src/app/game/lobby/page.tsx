@@ -68,6 +68,12 @@ export default function LobbyPage() {
       setGameStartData(data);
       // Сохраняем данные игры в sessionStorage для использования на странице игры
       sessionStorage.setItem("networkGameData", JSON.stringify(data));
+      // Сохраняем playerId текущего игрока для использования при переподключении
+      if (socket?.id && data.playerSlotMap[socket.id] !== undefined) {
+        const myPlayerId = data.playerSlotMap[socket.id];
+        sessionStorage.setItem(`playerId_${data.lobby.id}`, String(myPlayerId));
+        console.log(`[LobbyPage] Saved playerId ${myPlayerId} for lobby ${data.lobby.id}`);
+      }
       // Перенаправляем на игровую страницу с небольшой задержкой, чтобы показать экран загрузки
       setTimeout(() => {
         router.push(`/game?network=true&lobbyId=${data.lobby.id}`);
