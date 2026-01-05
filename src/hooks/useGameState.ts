@@ -1301,18 +1301,42 @@ export function useGameState() {
 
     const autoUpgradeInterval = setInterval(() => {
       setGameState((prev) => {
-        // Применяем автоматическое развитие ко всем активным игрокам
-        // Для игрока 0 (верхнего) - только если autoUpgrade включен
-        // Для остальных игроков - всегда
+        // Определяем, находимся ли мы в сетевом режиме
+        const isNetworkMode = typeof window !== "undefined" && 
+          sessionStorage.getItem("networkGameData") !== null;
+        
+        // Получаем aiSlots из sessionStorage, если они там есть
+        let aiSlots: PlayerId[] = [];
+        if (isNetworkMode && typeof window !== "undefined") {
+          try {
+            const networkData = sessionStorage.getItem("networkGameData");
+            if (networkData) {
+              const parsed = JSON.parse(networkData);
+              aiSlots = parsed.aiSlots || [];
+            }
+          } catch (e) {
+            // Игнорируем ошибки парсинга
+          }
+        }
+        
+        // Применяем автоматическое развитие только к ИИ игрокам
+        // В сетевом режиме используем aiSlots для определения ИИ
+        // В локальном режиме: игрок 0 - только если autoUpgrade включен, остальные - всегда ИИ
         const playersToUpgrade: PlayerId[] = prev.players
           .filter((p) => {
             if (!p.isActive) return false;
-            // Для игрока 0 проверяем флаг autoUpgrade
-            if (p.id === 0) {
-              return prev.autoUpgrade;
+            
+            if (isNetworkMode) {
+              // В сетевом режиме: авторазвитие только для ИИ слотов
+              return aiSlots.includes(p.id);
+            } else {
+              // В локальном режиме: игрок 0 - только если autoUpgrade включен
+              if (p.id === 0) {
+                return prev.autoUpgrade;
+              }
+              // Остальные игроки - всегда ИИ
+              return true;
             }
-            // Для остальных игроков всегда включаем авторазвитие
-            return true;
           })
           .map((p) => p.id);
 
@@ -1927,6 +1951,7 @@ export function useGameState() {
 
   return {
     gameState,
+    setGameState, // Экспортируем setGameState для прямого обновления состояния
     buyUnit,
     upgradeBuilding,
     repairBuilding,

@@ -13,12 +13,14 @@ interface UseNetworkGameStateProps {
   socketId: string | null;
   socket: Socket | null;
   isConnected: boolean;
+  aiSlots?: PlayerId[];
 }
 
 interface UseNetworkGameStateReturn {
   gameState: GameState | null;
   isConnected: boolean;
   myPlayerId: PlayerId | null;
+  aiSlots: PlayerId[];
   buyUnit: (playerId: PlayerId, barrackId: string, unitType: UnitType) => void;
   upgradeBuilding: (playerId: PlayerId, buildingId: string) => void;
   repairBuilding: (playerId: PlayerId, buildingId: string) => void;
@@ -36,12 +38,14 @@ export function useNetworkGameState({
   socketId,
   socket,
   isConnected,
+  aiSlots: initialAiSlots = [],
 }: UseNetworkGameStateProps): UseNetworkGameStateReturn {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myPlayerId, setMyPlayerId] = useState<PlayerId | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerId | null>(null);
   const [selectedBuilding, setSelectedBuilding] = useState<string | null>(null);
   const [currentPlayerSlotMap, setCurrentPlayerSlotMap] = useState<Record<string, PlayerId>>(initialPlayerSlotMap);
+  const [aiSlots, setAiSlots] = useState<PlayerId[]>(initialAiSlots);
   
   // Обновляем playerSlotMap при получении обновлений от сервера
   useEffect(() => {
@@ -116,6 +120,10 @@ export function useNetworkGameState({
       if (shouldLog) {
         console.log("[useNetworkGameState] Received game state from server");
         console.log("[useNetworkGameState] Game time:", data.gameState.gameTime);
+      }
+      
+      if (data.aiSlots) {
+        setAiSlots(data.aiSlots);
       }
       
       if (data.playerSlotMap) {
@@ -321,6 +329,7 @@ export function useNetworkGameState({
     gameState: finalGameState,
     isConnected,
     myPlayerId,
+    aiSlots,
     buyUnit,
     upgradeBuilding,
     repairBuilding,

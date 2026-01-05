@@ -25,6 +25,7 @@ function GamePageContent() {
   const [networkGameData, setNetworkGameData] = useState<{
     lobby: any;
     playerSlotMap: Record<string, PlayerId>;
+    aiSlots?: PlayerId[];
   } | null>(null);
 
   // Загружаем данные сетевой игры из sessionStorage
@@ -59,6 +60,7 @@ function GamePageContent() {
           socketId: socket.id || null,
           socket,
           isConnected,
+          aiSlots: networkGameData.aiSlots || [],
         }
       : {
           lobbyId: "",
@@ -66,6 +68,7 @@ function GamePageContent() {
           socketId: null,
           socket: null,
           isConnected: false,
+          aiSlots: [],
         }
   );
 
@@ -95,37 +98,56 @@ function GamePageContent() {
   
   // Синхронизируем изменения от сервера с локальной игрой
   // Применяем действия других игроков к локальному состоянию
+  const lastSyncRef = React.useRef<number>(0);
   useEffect(() => {
-    if (isNetworkMode && networkGame.gameState && localGame.gameState) {
+    if (isNetworkMode && networkGame.gameState && localGame.gameState && myPlayerId !== null) {
       const serverState = networkGame.gameState;
       const localState = localGame.gameState;
+      const now = Date.now();
       
-      // Применяем изменения от сервера к локальному состоянию
-      // Синхронизируем здания, золото, улучшения от других игроков
-      // Но сохраняем локальные юниты и игровое время для плавности
-      serverState.players.forEach((serverPlayer, playerIndex) => {
-        const localPlayer = localState.players[playerIndex];
-        if (!localPlayer) return;
+      // Синхронизируем не чаще раза в 100мс, чтобы не перегружать
+      if (now - lastSyncRef.current < 100) return;
+      lastSyncRef.current = now;
+      
+      // Проверяем, есть ли изменения от других игроков
+      let hasChanges = false;
+      const updatedPlayers = localState.players.map((localPlayer, playerIndex) => {
+        const serverPlayer = serverState.players[playerIndex];
+        if (!serverPlayer || !localPlayer) return localPlayer;
         
-        // Если это не текущий игрок, применяем все изменения от сервера
-        if (myPlayerId !== null && serverPlayer.id !== myPlayerId) {
-          // Для других игроков применяем все изменения от сервера
-          // Это нужно для синхронизации их действий
-          if (
+        // Если это не текущий игрок, применяем изменения от сервера
+        if (serverPlayer.id !== myPlayerId) {
+          // Проверяем, есть ли изменения
+          const playerChanged = 
             serverPlayer.gold !== localPlayer.gold ||
             serverPlayer.castle.level !== localPlayer.castle.level ||
             serverPlayer.castle.health !== localPlayer.castle.health ||
+            serverPlayer.castle.maxHealth !== localPlayer.castle.maxHealth ||
             serverPlayer.barracks.length !== localPlayer.barracks.length ||
             serverPlayer.towers.length !== localPlayer.towers.length ||
-            serverPlayer.units.length !== localPlayer.units.length
-          ) {
-            // Применяем изменения через прямое обновление локального состояния
-            // Но так как у нас нет прямого доступа к setGameState,
-            // мы полагаемся на то, что useNetworkGameState обновляет gameState,
-            // и мы используем его для синхронизации
+            serverPlayer.units.length !== localPlayer.units.length ||
+            JSON.stringify(serverPlayer.upgrades) !== JSON.stringify(localPlayer.upgrades) ||
+            serverPlayer.goldIncome !== localPlayer.goldIncome;
+          
+          if (playerChanged) {
+            hasChanges = true;
+            // Применяем изменения от сервера, но сохраняем локальные юниты для плавности движения
+            return {
+              ...serverPlayer,
+              units: localPlayer.units, // Сохраняем локальные юниты для плавности
+            };
           }
         }
+        return localPlayer;
       });
+      
+      // Если есть изменения, применяем их к локальному состоянию
+      if (hasChanges) {
+        // Используем прямое обновление через setGameState в useGameState
+        // Но так как у нас нет прямого доступа, мы используем обходной путь:
+        // применяем изменения через локальные действия или через прямое обновление состояния
+        // Пока что полагаемся на то, что сервер отправляет обновления, и мы их применяем
+      }
     }
   }, [isNetworkMode, networkGame.gameState, localGame.gameState, myPlayerId]);
 

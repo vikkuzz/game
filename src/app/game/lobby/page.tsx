@@ -63,11 +63,16 @@ export default function LobbyPage() {
   useEffect(() => {
     if (!socket) return;
 
-    const handleGameStart = (data: { lobby: any; playerSlotMap: Record<string, PlayerId> }) => {
+    const handleGameStart = (data: { lobby: any; playerSlotMap: Record<string, PlayerId>; aiSlots?: PlayerId[] }) => {
       console.log("Game starting, redirecting...", data);
       setGameStartData(data);
       // Сохраняем данные игры в sessionStorage для использования на странице игры
-      sessionStorage.setItem("networkGameData", JSON.stringify(data));
+      // Включаем aiSlots в сохраненные данные
+      const gameData = {
+        ...data,
+        aiSlots: data.aiSlots || [],
+      };
+      sessionStorage.setItem("networkGameData", JSON.stringify(gameData));
       // Сохраняем playerId текущего игрока для использования при переподключении
       if (socket?.id && data.playerSlotMap[socket.id] !== undefined) {
         const myPlayerId = data.playerSlotMap[socket.id];
