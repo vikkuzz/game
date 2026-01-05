@@ -1299,10 +1299,11 @@ export function useGameState() {
             const networkData = sessionStorage.getItem("networkGameData");
             if (networkData) {
               const parsed = JSON.parse(networkData);
-              aiSlots = parsed.aiSlots || [];
+              aiSlots = Array.isArray(parsed.aiSlots) ? parsed.aiSlots : [];
             }
           } catch (e) {
             // Игнорируем ошибки парсинга
+            console.warn("[useGameState] Error parsing networkGameData:", e);
           }
         }
         
@@ -1310,9 +1311,15 @@ export function useGameState() {
         // В сетевом режиме используем aiSlots для определения ИИ
         // В локальном режиме: игрок 0 - только если autoUpgrade включен, остальные - всегда ИИ
         
-        // В сетевом режиме, если aiSlots не загружен, не выполняем авторазвитие вообще
-        if (isNetworkMode && aiSlots.length === 0) {
-          return prev; // Не выполняем авторазвитие, если aiSlots не загружен
+        // В сетевом режиме, если aiSlots не загружен или пуст, не выполняем авторазвитие вообще
+        // Это важно: если aiSlots пуст, значит либо данные не загружены, либо нет ИИ игроков
+        // В любом случае, не выполняем авторазвитие для безопасности
+        if (isNetworkMode) {
+          // В сетевом режиме ВСЕГДА проверяем aiSlots
+          // Если aiSlots пуст или не загружен, не выполняем авторазвитие
+          if (!Array.isArray(aiSlots) || aiSlots.length === 0) {
+            return prev; // Не выполняем авторазвитие, если aiSlots не загружен или пуст
+          }
         }
         
         const playersToUpgrade: PlayerId[] = prev.players
@@ -1322,11 +1329,11 @@ export function useGameState() {
             if (isNetworkMode) {
               // В сетевом режиме: авторазвитие ТОЛЬКО для ИИ слотов
               // Реальные игроки НЕ должны получать авторазвитие НИ В КАКОМ ВИДЕ
-              // Проверяем, что aiSlots загружен и содержит этого игрока
-              if (aiSlots.length > 0 && aiSlots.includes(p.id)) {
+              // Проверяем, что aiSlots загружен, является массивом, и содержит этого игрока
+              if (Array.isArray(aiSlots) && aiSlots.length > 0 && aiSlots.includes(p.id)) {
                 return true; // Это ИИ - можно авторазвитие
               }
-              // Если aiSlots не загружен или игрок не в aiSlots - это реальный игрок
+              // Если aiSlots не загружен, не массив, пуст, или игрок не в aiSlots - это реальный игрок
               return false; // Это реальный игрок - НЕТ авторазвития
             } else {
               // В локальном режиме: игрок 0 - только если autoUpgrade включен
@@ -1660,8 +1667,20 @@ export function useGameState() {
             currentAliveBarracks.length > 0 &&
             currentAliveBarracks.every((b) => b.level >= 2);
 
+          // В сетевом режиме дополнительно проверяем, что игрок является ИИ
+          // Это дополнительная защита от случайной прокачки для реальных игроков
+          let canPerformRandomUpgrade = true;
+          if (isNetworkMode) {
+            // В сетевом режиме случайная прокачка ТОЛЬКО для ИИ игроков
+            if (!Array.isArray(aiSlots) || aiSlots.length === 0 || !aiSlots.includes(playerId)) {
+              canPerformRandomUpgrade = false; // Это реальный игрок - запрещаем случайную прокачку
+            }
+          }
+
           // Случайная прокачка: если все статы на уровне 2, все бараки на уровне 2, и замок на уровне 2
+          // И только если это ИИ игрок в сетевом режиме (или локальный режим)
           if (
+            canPerformRandomUpgrade &&
             allCastleStatsAtLevel1 &&
             (currentAliveBarracks.length === 0 || allBarracksAtLevel2Check) &&
             allCastleStatsAtLevel2Check &&

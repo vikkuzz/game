@@ -117,24 +117,63 @@ function GamePageContent() {
         
         // Если это не текущий игрок, применяем изменения от сервера
         if (serverPlayer.id !== myPlayerId) {
-          // Проверяем, есть ли изменения
-          const playerChanged = 
-            serverPlayer.gold !== localPlayer.gold ||
+          // Проверяем, есть ли изменения в статических полях (уровни, улучшения, структура зданий)
+          // НЕ синхронизируем динамические поля (золото, спавн, кулдауны), которые обновляются локальным циклом
+          const staticFieldsChanged = 
             serverPlayer.castle.level !== localPlayer.castle.level ||
-            serverPlayer.castle.health !== localPlayer.castle.health ||
             serverPlayer.castle.maxHealth !== localPlayer.castle.maxHealth ||
             serverPlayer.barracks.length !== localPlayer.barracks.length ||
             serverPlayer.towers.length !== localPlayer.towers.length ||
-            serverPlayer.units.length !== localPlayer.units.length ||
             JSON.stringify(serverPlayer.upgrades) !== JSON.stringify(localPlayer.upgrades) ||
             serverPlayer.goldIncome !== localPlayer.goldIncome;
           
-          if (playerChanged) {
+          // Проверяем изменения в зданиях (уровни, структура)
+          const buildingsChanged = 
+            JSON.stringify(serverPlayer.barracks.map(b => ({ id: b.id, level: b.level, maxHealth: b.maxHealth }))) !== 
+            JSON.stringify(localPlayer.barracks.map(b => ({ id: b.id, level: b.level, maxHealth: b.maxHealth }))) ||
+            JSON.stringify(serverPlayer.towers.map(t => ({ id: t.id, level: t.level, maxHealth: t.maxHealth }))) !== 
+            JSON.stringify(localPlayer.towers.map(t => ({ id: t.id, level: t.level, maxHealth: t.maxHealth })));
+          
+          if (staticFieldsChanged || buildingsChanged) {
             hasChanges = true;
-            // Применяем изменения от сервера, но сохраняем локальные юниты для плавности движения
+            // Применяем изменения от сервера, но сохраняем динамические поля от локального состояния
+            // Это предотвращает "откат" золота, спавна и других динамических полей
             return {
               ...serverPlayer,
-              units: localPlayer.units, // Сохраняем локальные юниты для плавности
+              // Сохраняем динамические поля от локального состояния
+              gold: localPlayer.gold, // Золото обновляется локальным циклом
+              // Сохраняем локальные юниты для плавности движения
+              units: localPlayer.units,
+              // Обновляем здания, но сохраняем динамические поля (health, spawnCooldown, repairCooldown)
+              castle: {
+                ...serverPlayer.castle,
+                health: localPlayer.castle.health, // Здоровье может изменяться локально (атаки)
+                repairCooldown: localPlayer.castle.repairCooldown, // Кулдаун обновляется локально
+              },
+              barracks: serverPlayer.barracks.map(serverBarrack => {
+                const localBarrack = localPlayer.barracks.find(b => b.id === serverBarrack.id);
+                if (localBarrack) {
+                  return {
+                    ...serverBarrack,
+                    health: localBarrack.health, // Здоровье может изменяться локально
+                    spawnCooldown: localBarrack.spawnCooldown, // Спавн обновляется локально
+                    repairCooldown: localBarrack.repairCooldown, // Кулдаун обновляется локально
+                    availableUnits: localBarrack.availableUnits, // Доступные юниты обновляются локально
+                  };
+                }
+                return serverBarrack;
+              }),
+              towers: serverPlayer.towers.map(serverTower => {
+                const localTower = localPlayer.towers.find(t => t.id === serverTower.id);
+                if (localTower) {
+                  return {
+                    ...serverTower,
+                    health: localTower.health, // Здоровье может изменяться локально
+                    repairCooldown: localTower.repairCooldown, // Кулдаун обновляется локально
+                  };
+                }
+                return serverTower;
+              }),
             };
           }
         }
