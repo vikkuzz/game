@@ -143,10 +143,15 @@ function GamePageContent() {
       
       // Если есть изменения, применяем их к локальному состоянию
       if (hasChanges) {
-        // Используем прямое обновление через setGameState в useGameState
-        // Но так как у нас нет прямого доступа, мы используем обходной путь:
-        // применяем изменения через локальные действия или через прямое обновление состояния
-        // Пока что полагаемся на то, что сервер отправляет обновления, и мы их применяем
+        // Применяем изменения через setGameState
+        localGame.setGameState((prev) => ({
+          ...prev,
+          players: updatedPlayers,
+          // Также синхронизируем другие поля от сервера
+          gameTime: serverState.gameTime,
+          isPaused: serverState.isPaused,
+          gameSpeed: serverState.gameSpeed,
+        }));
       }
     }
   }, [isNetworkMode, networkGame.gameState, localGame.gameState, myPlayerId]);
@@ -185,6 +190,10 @@ function GamePageContent() {
           localGame.setGameSpeed(speed);
         },
         selectPlayer: (playerId: PlayerId) => {
+          // В сетевом режиме запрещаем переключение между игроками
+          if (isNetworkMode && myPlayerId !== null && playerId !== myPlayerId) {
+            return; // Игнорируем попытку переключения на другого игрока
+          }
           // В сетевом режиме обновляем и сетевой, и локальный selectedPlayer
           networkGame.selectPlayer(playerId);
           localGame.selectPlayer(playerId);
@@ -356,6 +365,8 @@ function GamePageContent() {
           }
           onSelectPlayer={(playerId: PlayerId) => selectPlayer(playerId)}
           onToggleAutoUpgrade={toggleAutoUpgrade}
+          isNetworkMode={isNetworkMode}
+          myPlayerId={myPlayerId}
         />
       </div>
 
@@ -516,6 +527,8 @@ function GamePageContent() {
               }
               onSelectPlayer={(playerId: PlayerId) => selectPlayer(playerId)}
               onToggleAutoUpgrade={toggleAutoUpgrade}
+              isNetworkMode={isNetworkMode}
+              myPlayerId={myPlayerId}
             />
           </div>
         </div>

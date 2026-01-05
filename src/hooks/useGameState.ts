@@ -488,12 +488,7 @@ export function useGameState() {
         players: prev.players.map((player) => {
           const updateBuilding = (building: BuildingType) => {
             let updated = { ...building };
-            if (updated.upgradeCooldown && updated.upgradeCooldown > 0) {
-              updated.upgradeCooldown = Math.max(
-                0,
-                updated.upgradeCooldown - GAME_CONFIG.gameLoopInterval
-              );
-            }
+            // Убран upgradeCooldown - больше не нужен
             if (updated.repairCooldown && updated.repairCooldown > 0) {
               updated.repairCooldown = Math.max(
                 0,
@@ -650,10 +645,7 @@ export function useGameState() {
 
         const upgradeCost = building.level * 200;
 
-        if (
-          player.gold >= upgradeCost &&
-          (!building.upgradeCooldown || building.upgradeCooldown <= 0)
-        ) {
+        if (player.gold >= upgradeCost) {
           return {
             ...prev,
             players: prev.players.map((p) => {
@@ -670,7 +662,6 @@ export function useGameState() {
                         p.castle.health + 200,
                         p.castle.maxHealth + 200
                       ),
-                      upgradeCooldown: 5000,
                     },
                   };
                 } else if (p.barracks.some((b) => b.id === buildingId)) {
@@ -681,6 +672,10 @@ export function useGameState() {
                     const newLevel = upgradedBarrack.level + 1;
                     // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
                     if (newLevel >= 3 && p.castle.level < 2) {
+                      // Показываем сообщение пользователю
+                      if (typeof window !== "undefined") {
+                        alert("Сначала нужно улучшить замок до 2 уровня, чтобы улучшить барак до 3 уровня");
+                      }
                       return p;
                     }
                     const newSpawnInterval = getSpawnInterval(newLevel);
@@ -698,7 +693,6 @@ export function useGameState() {
                                 b.maxHealth + 100
                               ),
                               maxAvailableUnits: (b.maxAvailableUnits || 5) + 2,
-                              upgradeCooldown: 5000,
                               spawnCooldown: Math.min(
                                 b.spawnCooldown || newSpawnInterval,
                                 newSpawnInterval
@@ -732,7 +726,6 @@ export function useGameState() {
                                 t.maxHealth + 100
                               ),
                               attack: (t.attack || 50) + 10,
-                              upgradeCooldown: 5000,
                             }
                           : t
                       ),
@@ -831,6 +824,10 @@ export function useGameState() {
 
         // Статы замка можно улучшать до 3 уровня только если замок минимум 2 уровня
         if (newLevel >= 3 && player.castle.level < 2) {
+          // Показываем сообщение пользователю
+          if (typeof window !== "undefined") {
+            alert("Сначала нужно улучшить замок до 2 уровня, чтобы улучшить статы до 3 уровня");
+          }
           return prev;
         }
 
@@ -1057,11 +1054,7 @@ export function useGameState() {
             // 25% шанс - улучшение здания
             const upgradeableBuildings: Array<{ id: string }> = [];
 
-            if (
-              player.castle.level < 50 &&
-              (!player.castle.upgradeCooldown ||
-                player.castle.upgradeCooldown <= 0)
-            ) {
+            if (player.castle.level < 50) {
               upgradeableBuildings.push({ id: player.castle.id });
             }
 
@@ -1069,7 +1062,6 @@ export function useGameState() {
               if (
                 b.health > 0 &&
                 b.level < 50 &&
-                (!b.upgradeCooldown || b.upgradeCooldown <= 0) &&
                 // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
                 !(b.level >= 2 && player.castle.level < 2)
               ) {
@@ -1078,11 +1070,7 @@ export function useGameState() {
             });
 
             player.towers.forEach((t) => {
-              if (
-                t.health > 0 &&
-                t.level < 50 &&
-                (!t.upgradeCooldown || t.upgradeCooldown <= 0)
-              ) {
+              if (t.health > 0 && t.level < 50) {
                 upgradeableBuildings.push({ id: t.id });
               }
             });
@@ -1116,7 +1104,6 @@ export function useGameState() {
                     level: newLevel,
                     maxHealth: buildingObj.maxHealth + 200,
                     health: buildingObj.health + 200,
-                    upgradeCooldown: 5000,
                   };
 
                   if (player.castle.id === building.id) {
@@ -1322,13 +1309,25 @@ export function useGameState() {
         // Применяем автоматическое развитие только к ИИ игрокам
         // В сетевом режиме используем aiSlots для определения ИИ
         // В локальном режиме: игрок 0 - только если autoUpgrade включен, остальные - всегда ИИ
+        
+        // В сетевом режиме, если aiSlots не загружен, не выполняем авторазвитие вообще
+        if (isNetworkMode && aiSlots.length === 0) {
+          return prev; // Не выполняем авторазвитие, если aiSlots не загружен
+        }
+        
         const playersToUpgrade: PlayerId[] = prev.players
           .filter((p) => {
             if (!p.isActive) return false;
             
             if (isNetworkMode) {
-              // В сетевом режиме: авторазвитие только для ИИ слотов
-              return aiSlots.includes(p.id);
+              // В сетевом режиме: авторазвитие ТОЛЬКО для ИИ слотов
+              // Реальные игроки НЕ должны получать авторазвитие НИ В КАКОМ ВИДЕ
+              // Проверяем, что aiSlots загружен и содержит этого игрока
+              if (aiSlots.length > 0 && aiSlots.includes(p.id)) {
+                return true; // Это ИИ - можно авторазвитие
+              }
+              // Если aiSlots не загружен или игрок не в aiSlots - это реальный игрок
+              return false; // Это реальный игрок - НЕТ авторазвития
             } else {
               // В локальном режиме: игрок 0 - только если autoUpgrade включен
               if (p.id === 0) {
@@ -1493,11 +1492,7 @@ export function useGameState() {
             );
             if (barrackToUpgrade) {
               const upgradeCost = barrackToUpgrade.level * 200;
-              if (
-                currentPlayerForUpgrade.gold >= upgradeCost &&
-                (!barrackToUpgrade.upgradeCooldown ||
-                  barrackToUpgrade.upgradeCooldown <= 0)
-              ) {
+              if (currentPlayerForUpgrade.gold >= upgradeCost) {
                 const newSpawnInterval = getSpawnInterval(
                   barrackToUpgrade.level + 1
                 );
@@ -1520,7 +1515,6 @@ export function useGameState() {
                                 ),
                                 maxAvailableUnits:
                                   (b.maxAvailableUnits || 5) + 2,
-                                upgradeCooldown: 5000,
                                 spawnCooldown: Math.min(
                                   b.spawnCooldown || newSpawnInterval,
                                   newSpawnInterval
@@ -1623,11 +1617,7 @@ export function useGameState() {
               const currentPlayer = newState.players[playerId];
               if (currentPlayer.castle.level < 2) {
                 const upgradeCost = currentPlayer.castle.level * 200;
-                if (
-                  currentPlayer.gold >= upgradeCost &&
-                  (!currentPlayer.castle.upgradeCooldown ||
-                    currentPlayer.castle.upgradeCooldown <= 0)
-                ) {
+                if (currentPlayer.gold >= upgradeCost) {
                   newState = {
                     ...newState,
                     players: newState.players.map((p) => {
@@ -1643,7 +1633,6 @@ export function useGameState() {
                               p.castle.health + 200,
                               p.castle.maxHealth + 200
                             ),
-                            upgradeCooldown: 5000,
                           },
                         };
                       }
@@ -1701,7 +1690,6 @@ export function useGameState() {
                   b.health > 0 &&
                   b.level < 50 &&
                   currentPlayer.gold >= upgradeCost &&
-                  (!b.upgradeCooldown || b.upgradeCooldown <= 0) &&
                   !(b.level >= 2 && currentPlayer.castle.level < 2)
                 );
               }
@@ -1713,17 +1701,14 @@ export function useGameState() {
                 return (
                   t.health > 0 &&
                   t.level < 50 &&
-                  currentPlayer.gold >= upgradeCost &&
-                  (!t.upgradeCooldown || t.upgradeCooldown <= 0)
+                  currentPlayer.gold >= upgradeCost
                 );
               }
             );
             
             const canUpgradeCastle =
               currentPlayer.castle.level < 50 &&
-              currentPlayer.gold >= currentPlayer.castle.level * 200 &&
-              (!currentPlayer.castle.upgradeCooldown ||
-                currentPlayer.castle.upgradeCooldown <= 0);
+              currentPlayer.gold >= currentPlayer.castle.level * 200;
 
             // Выбираем случайный доступный тип улучшения
             const availableOptions: string[] = [];
@@ -1816,11 +1801,7 @@ export function useGameState() {
                 } else if (action === "castle") {
                   // Прокачка замка
                   const upgradeCost = currentPlayer.castle.level * 200;
-                  if (
-                    currentPlayer.gold >= upgradeCost &&
-                    (!currentPlayer.castle.upgradeCooldown ||
-                      currentPlayer.castle.upgradeCooldown <= 0)
-                  ) {
+                  if (currentPlayer.gold >= upgradeCost) {
                     newState = {
                       ...newState,
                       players: newState.players.map((p) => {
@@ -1836,7 +1817,6 @@ export function useGameState() {
                                 p.castle.health + 200,
                                 p.castle.maxHealth + 200
                               ),
-                              upgradeCooldown: 5000,
                             },
                           };
                         }
@@ -1875,7 +1855,6 @@ export function useGameState() {
                                     ),
                                     maxAvailableUnits:
                                       (b.maxAvailableUnits || 5) + 2,
-                                    upgradeCooldown: 5000,
                                     spawnCooldown: Math.min(
                                       b.spawnCooldown || newSpawnInterval,
                                       newSpawnInterval
@@ -1918,7 +1897,6 @@ export function useGameState() {
                                       t.maxHealth + 100
                                     ),
                                     attack: (t.attack || 50) + 10,
-                                    upgradeCooldown: 5000,
                                   }
                                 : t
                             ),

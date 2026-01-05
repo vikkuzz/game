@@ -22,6 +22,8 @@ interface ControlPanelProps {
   ) => void;
   onSelectPlayer: (playerId: PlayerId) => void;
   onToggleAutoUpgrade: () => void;
+  isNetworkMode?: boolean;
+  myPlayerId?: PlayerId | null;
 }
 
 export const ControlPanel: React.FC<ControlPanelProps> = ({
@@ -33,6 +35,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onUpgradeCastleStat,
   onSelectPlayer,
   onToggleAutoUpgrade,
+  isNetworkMode = false,
+  myPlayerId = null,
 }) => {
   const player = gameState.players[selectedPlayer];
   if (!player) return null;
@@ -55,18 +59,21 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
           {gameState.players.map((p, idx) => {
             const color = playerColors[idx];
             const isSelected = selectedPlayer === p.id;
+            const isDisabled = isNetworkMode && myPlayerId !== null && p.id !== myPlayerId;
             return (
               <button
                 key={p.id}
-                onClick={() => onSelectPlayer(p.id)}
+                onClick={() => !isDisabled && onSelectPlayer(p.id)}
+                disabled={!p.isActive || isDisabled}
                 className={cn(
                   "px-4 py-2 rounded font-medium transition-colors",
                   isSelected
                     ? `bg-${color}-600 text-white`
+                    : isDisabled
+                    ? `bg-gray-400 text-gray-600 cursor-not-allowed`
                     : `bg-${color}-200 text-gray-800 hover:bg-${color}-300`,
                   !p.isActive && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={!p.isActive}>
+                )}>
                 {p.id + 1}
               </button>
             );
@@ -145,22 +152,48 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               </Button>
 
               {/* Починка */}
-              <Button
-                onClick={() =>
-                  onRepairBuilding(selectedPlayer, selectedBuilding.id)
-                }
-                disabled={
-                  selectedBuilding.health >= selectedBuilding.maxHealth ||
-                  player.gold < 100 ||
-                  !!(
-                    selectedBuilding.repairCooldown &&
-                    selectedBuilding.repairCooldown > 0
-                  )
-                }
-                variant="secondary"
-                size="sm">
-                Починить (100 золота)
-              </Button>
+              <div className="space-y-1">
+                <Button
+                  onClick={() =>
+                    onRepairBuilding(selectedPlayer, selectedBuilding.id)
+                  }
+                  disabled={
+                    selectedBuilding.health >= selectedBuilding.maxHealth ||
+                    player.gold < 100 ||
+                    !!(
+                      selectedBuilding.repairCooldown &&
+                      selectedBuilding.repairCooldown > 0
+                    )
+                  }
+                  variant="secondary"
+                  size="sm"
+                  className="w-full">
+                  Починить (100 золота)
+                </Button>
+                {selectedBuilding.repairCooldown &&
+                  selectedBuilding.repairCooldown > 0 && (
+                    <div className="w-full">
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Кулдаун починки:</span>
+                        <span>
+                          {Math.ceil(selectedBuilding.repairCooldown / 1000)}с
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div
+                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${
+                              ((300000 - selectedBuilding.repairCooldown) /
+                                300000) *
+                              100
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+              </div>
 
               {/* Покупка юнитов (только для бараков) */}
               {selectedBuilding.type === "barracks" && (
