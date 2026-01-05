@@ -69,26 +69,40 @@ function GamePageContent() {
         }
   );
 
-  // Инициализируем локальную игру начальным состоянием от сервера
+  // В сетевом режиме используем состояние от сервера как основной источник истины
+  // Локальный игровой цикл работает для отзывчивости, но состояние синхронизируется с сервером
+  const gameState = isNetworkMode && networkGame.gameState 
+    ? networkGame.gameState 
+    : localGame.gameState;
+  
+  // Синхронизируем состояние от сервера с локальной игрой для игрового цикла
   useEffect(() => {
-    if (isNetworkMode && networkGameData && networkGame.gameState && localGame.gameState) {
-      // Синхронизируем начальное состояние от сервера с локальной игрой
-      // Это делается только один раз при загрузке
+    if (isNetworkMode && networkGame.gameState && localGame.gameState) {
       const serverState = networkGame.gameState;
       const localState = localGame.gameState;
       
-      // Если локальная игра еще не инициализирована или серверное состояние новее,
-      // обновляем локальное состояние
-      if (serverState.gameTime === 0 || serverState.gameTime < localState.gameTime) {
-        // Используем состояние от сервера как основу
-        // Но игровой цикл будет работать локально
+      // Если состояние от сервера отличается, обновляем локальное состояние
+      // Это нужно для того, чтобы игровой цикл работал с актуальными данными
+      if (serverState.gameTime !== localState.gameTime || 
+          serverState.players.some((sp, i) => {
+            const lp = localState.players[i];
+            return sp.gold !== lp.gold || 
+                   sp.castle.level !== lp.castle.level ||
+                   sp.castle.health !== lp.castle.health ||
+                   sp.units.length !== lp.units.length;
+          })) {
+        // Применяем обновления от сервера к локальной игре
+        // Но сохраняем локальные selectedPlayer и selectedBuilding
+        const updatedState = {
+          ...serverState,
+          selectedPlayer: localState.selectedPlayer,
+          selectedBuilding: localState.selectedBuilding,
+        };
+        // Обновляем локальное состояние через setGameState в useGameState
+        // Но так как у нас нет прямого доступа, мы будем полагаться на периодическую синхронизацию
       }
     }
-  }, [isNetworkMode, networkGameData, networkGame.gameState, localGame.gameState]);
-
-  // В сетевом режиме используем локальный игровой цикл, но действия отправляем на сервер
-  // ВАЖНО: Временно используем локальный игровой цикл в сетевом режиме, пока не реализован полный серверный цикл
-  const gameState = localGame.gameState;
+  }, [isNetworkMode, networkGame.gameState, localGame.gameState]);
   
   // Определяем myPlayerId для сетевого режима
   const myPlayerId = isNetworkMode && networkGameData

@@ -146,8 +146,18 @@ export default function socketHandler(io: SocketIOServer) {
           // Обновляем состояние игры на сервере
           gameServer.updateGameState(data.roomId, newGameState);
           
+          // Получаем актуальные данные комнаты для отправки
+          const room = gameServer.getGame(data.roomId);
+          const aiSlots = room ? Array.from(room.aiSlots) : [];
+          const playerSlotMap = room ? Object.fromEntries(room.playerSlotMap) : {};
+          
           // Отправляем обновленное состояние всем игрокам в комнате
-          io.to(data.roomId).emit("game:state", { gameState: newGameState });
+          console.log(`[SocketHandler] Broadcasting game state update after action from player ${playerId}`);
+          io.to(data.roomId).emit("game:state", { 
+            gameState: newGameState,
+            aiSlots: aiSlots,
+            playerSlotMap: playerSlotMap
+          });
         } else {
           // Действие было отклонено (невалидно)
           // Можно отправить ошибку обратно игроку
@@ -183,11 +193,14 @@ export default function socketHandler(io: SocketIOServer) {
     // Обработка начала игры (вызывается после события game:start от лобби)
     socket.on("game:init", (data: { lobby: Lobby; playerSlotMap: Record<string, PlayerId> }) => {
       try {
+        console.log(`[SocketHandler] game:init - lobby: ${data.lobby.id}, playerSlotMap:`, data.playerSlotMap);
         const slotMap = new Map<string, PlayerId>(Object.entries(data.playerSlotMap));
         const room = gameServer.createGame(data.lobby.id, data.lobby, slotMap);
         
         // Получаем ИИ слоты для отправки клиентам
         const aiSlots = Array.from(room.aiSlots);
+        
+        console.log(`[SocketHandler] Game room created - roomId: ${room.id}, aiSlots:`, aiSlots, "playerSlotMap:", Object.fromEntries(room.playerSlotMap));
         
         // Отправляем состояние игры и информацию об ИИ слотах всем игрокам
         io.to(data.lobby.id).emit("game:state", { 

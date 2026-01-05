@@ -45,8 +45,12 @@ export function useNetworkGameState({
   // Определяем PlayerId текущего игрока
   useEffect(() => {
     if (socketId && playerSlotMap[socketId] !== undefined) {
-      setMyPlayerId(playerSlotMap[socketId]);
-      setSelectedPlayer(playerSlotMap[socketId]);
+      const assignedPlayerId = playerSlotMap[socketId];
+      console.log(`[useNetworkGameState] Player slot assignment - socketId: ${socketId}, playerId: ${assignedPlayerId}, playerSlotMap:`, playerSlotMap);
+      setMyPlayerId(assignedPlayerId);
+      setSelectedPlayer(assignedPlayerId);
+    } else {
+      console.warn(`[useNetworkGameState] Cannot determine playerId - socketId: ${socketId}, playerSlotMap:`, playerSlotMap);
     }
   }, [socketId, playerSlotMap]);
 
@@ -66,22 +70,17 @@ export function useNetworkGameState({
       aiSlots?: PlayerId[];
       playerSlotMap?: Record<string, PlayerId>;
     }) => {
-      console.log("[useNetworkGameState] Received game state from server:", data.gameState);
+      console.log("[useNetworkGameState] Received game state from server");
+      console.log("[useNetworkGameState] Game time:", data.gameState.gameTime);
+      console.log("[useNetworkGameState] Players:", data.gameState.players.map(p => ({ id: p.id, gold: p.gold, castleLevel: p.castle.level })));
       if (data.aiSlots) {
         console.log("[useNetworkGameState] AI slots:", data.aiSlots);
       }
-      // Обновляем состояние игры, но сохраняем локальные selectedPlayer и selectedBuilding
-      setGameState((prevState) => {
-        if (!prevState) {
-          return data.gameState;
-        }
-        // Объединяем состояние от сервера с локальными значениями
-        return {
-          ...data.gameState,
-          selectedPlayer: prevState.selectedPlayer ?? data.gameState.selectedPlayer,
-          selectedBuilding: prevState.selectedBuilding ?? data.gameState.selectedBuilding,
-        };
-      });
+      if (data.playerSlotMap) {
+        console.log("[useNetworkGameState] Player slot map:", data.playerSlotMap);
+      }
+      // Обновляем состояние игры полностью от сервера (это источник истины)
+      setGameState(data.gameState);
     };
 
     socket.on("game:state", handleGameState);

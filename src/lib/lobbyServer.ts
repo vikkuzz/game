@@ -173,15 +173,19 @@ class LobbyManager {
     // Перемешиваем слоты случайным образом
     const shuffledSlots = slots.sort(() => Math.random() - 0.5);
     
+    console.log(`[LobbyManager] assignPlayerSlots - lobby: ${lobby.id}, players: ${lobby.players.length}, shuffledSlots:`, shuffledSlots);
+    
     // Назначаем слоты игрокам по порядку
     lobby.players.forEach((player, index) => {
       if (index < shuffledSlots.length) {
         const slot = shuffledSlots[index];
         player.assignedSlot = slot;
         slotMap.set(player.id, slot);
+        console.log(`[LobbyManager] Assigned slot ${slot} to player ${player.id} (${player.name})`);
       }
     });
 
+    console.log(`[LobbyManager] Final slot map:`, Object.fromEntries(slotMap));
     return slotMap;
   }
 
