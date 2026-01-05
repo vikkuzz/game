@@ -1,7 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { Suspense, useEffect, useState, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useGameState } from "@/hooks/useGameState";
+import { useNetworkGameState } from "@/hooks/useNetworkGameState";
+import { useSocket } from "@/hooks/useSocket";
 import { GameMap } from "@/components/game/GameMap";
 import { ControlPanel } from "@/components/game/ControlPanel";
 import { GameOverModal } from "@/components/game/GameOverModal";
@@ -13,9 +16,136 @@ import { MobileControlPanel } from "@/components/game/MobileControlPanel";
 /**
  * Страница игры Survival Chaos
  */
-export default function GamePage() {
+function GamePageContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const isNetworkMode = searchParams?.get("network") === "true";
+  const lobbyId = searchParams?.get("lobbyId") || null;
+  const { socket, isConnected } = useSocket();
+  const [networkGameData, setNetworkGameData] = useState<{
+    lobby: any;
+    playerSlotMap: Record<string, PlayerId>;
+  } | null>(null);
+
+  // Загружаем данные сетевой игры из sessionStorage
+  useEffect(() => {
+    if (isNetworkMode && typeof window !== "undefined") {
+      const stored = sessionStorage.getItem("networkGameData");
+      if (stored) {
+        try {
+          const data = JSON.parse(stored);
+          setNetworkGameData(data);
+        } catch (error) {
+          console.error("Error parsing network game data:", error);
+          // Если данные некорректны, возвращаемся в лобби
+          router.push("/game/lobby");
+        }
+      } else {
+        // Если данных нет, возвращаемся в лобби
+        router.push("/game/lobby");
+      }
+    }
+  }, [isNetworkMode, router]);
+
+  // Локальное состояние игры (всегда используется для игрового цикла)
+  const localGame = useGameState();
+
+  // Сетевое состояние игры (используется только для получения начального состояния и отправки действий)
+  const networkGame = useNetworkGameState(
+    networkGameData && socket
+      ? {
+          lobbyId: networkGameData.lobby.id,
+          playerSlotMap: networkGameData.playerSlotMap,
+          socketId: socket.id || null,
+          socket,
+          isConnected,
+        }
+      : {
+          lobbyId: "",
+          playerSlotMap: {},
+          socketId: null,
+          socket: null,
+          isConnected: false,
+        }
+  );
+
+  // Инициализируем локальную игру начальным состоянием от сервера
+  useEffect(() => {
+    if (isNetworkMode && networkGameData && networkGame.gameState && localGame.gameState) {
+      // Синхронизируем начальное состояние от сервера с локальной игрой
+      // Это делается только один раз при загрузке
+      const serverState = networkGame.gameState;
+      const localState = localGame.gameState;
+      
+      // Если локальная игра еще не инициализирована или серверное состояние новее,
+      // обновляем локальное состояние
+      if (serverState.gameTime === 0 || serverState.gameTime < localState.gameTime) {
+        // Используем состояние от сервера как основу
+        // Но игровой цикл будет работать локально
+      }
+    }
+  }, [isNetworkMode, networkGameData, networkGame.gameState, localGame.gameState]);
+
+  // В сетевом режиме используем локальный игровой цикл, но действия отправляем на сервер
+  // ВАЖНО: Временно используем локальный игровой цикл в сетевом режиме, пока не реализован полный серверный цикл
+  const gameState = localGame.gameState;
+  
+  // Определяем myPlayerId для сетевого режима
+  const myPlayerId = isNetworkMode && networkGameData
+    ? networkGame.myPlayerId
+    : null;
+
+  // В сетевом режиме используем сетевые действия для отправки на сервер,
+  // но также применяем их локально для немедленного отклика
+  const gameActions = isNetworkMode && networkGameData
+    ? {
+        // Отправляем действия на сервер, но также применяем локально
+        buyUnit: (playerId: PlayerId, barrackId: string, unitType: UnitType) => {
+          networkGame.buyUnit(playerId, barrackId, unitType);
+          localGame.buyUnit(playerId, barrackId, unitType);
+        },
+        upgradeBuilding: (playerId: PlayerId, buildingId: string) => {
+          networkGame.upgradeBuilding(playerId, buildingId);
+          localGame.upgradeBuilding(playerId, buildingId);
+        },
+        repairBuilding: (playerId: PlayerId, buildingId: string) => {
+          networkGame.repairBuilding(playerId, buildingId);
+          localGame.repairBuilding(playerId, buildingId);
+        },
+        upgradeCastleStat: (playerId: PlayerId, stat: keyof import("@/types/game").CastleUpgrades) => {
+          networkGame.upgradeCastleStat(playerId, stat);
+          localGame.upgradeCastleStat(playerId, stat);
+        },
+        togglePause: () => {
+          networkGame.togglePause();
+          localGame.togglePause();
+        },
+        toggleAutoUpgrade: () => {
+          networkGame.toggleAutoUpgrade();
+          localGame.toggleAutoUpgrade();
+        },
+        setGameSpeed: (speed: number) => {
+          networkGame.setGameSpeed(speed);
+          localGame.setGameSpeed(speed);
+        },
+        selectPlayer: (playerId: PlayerId) => {
+          // В сетевом режиме обновляем и сетевой, и локальный selectedPlayer
+          networkGame.selectPlayer(playerId);
+          localGame.selectPlayer(playerId);
+        },
+        selectBuilding: (buildingId: string | null) => {
+          // В сетевом режиме обновляем и сетевой, и локальный selectedBuilding
+          networkGame.selectBuilding(buildingId);
+          localGame.selectBuilding(buildingId);
+        },
+        restartGame: () => {
+          // В сетевом режиме перезапуск не поддерживается
+          router.push("/game/lobby");
+        },
+      }
+    : localGame;
+
   const {
-    gameState,
     buyUnit,
     upgradeBuilding,
     repairBuilding,
@@ -26,15 +156,39 @@ export default function GamePage() {
     selectPlayer,
     selectBuilding,
     restartGame,
-  } = useGameState();
+  } = gameActions;
+
+  // Инициализируем selectedPlayer в сетевом режиме на основе myPlayerId
+  useEffect(() => {
+    if (isNetworkMode && myPlayerId !== null && gameState.selectedPlayer !== myPlayerId) {
+      // Автоматически выбираем своего игрока при загрузке
+      selectPlayer(myPlayerId);
+    }
+  }, [isNetworkMode, myPlayerId, gameState.selectedPlayer, selectPlayer]);
 
   const handleBuildingClick = (buildingId: string) => {
+    if (!gameState) return;
     if (gameState.selectedBuilding === buildingId) {
       selectBuilding(null);
     } else {
       selectBuilding(buildingId);
     }
   };
+
+  // Если в сетевом режиме и состояние еще не загружено, показываем загрузку
+  if (isNetworkMode && !gameState) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">Загрузка игры...</div>
+          <div className="flex items-center gap-2 justify-center">
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-green-400 text-sm">Подключение к серверу</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col md:block">
@@ -312,6 +466,32 @@ export default function GamePage() {
 
       {/* Модальное окно окончания игры */}
       <GameOverModal gameState={gameState} onRestart={restartGame} />
+      
+      {/* Индикатор сетевого режима */}
+      {isNetworkMode && (
+        <div className="fixed top-20 right-4 bg-blue-900/90 backdrop-blur-sm border border-blue-600 rounded-lg px-4 py-2 text-white text-sm z-50">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span>Сетевой режим</span>
+            {lobbyId && <span className="text-blue-300">({lobbyId})</span>}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * Обертка для поддержки useSearchParams
+ */
+export default function GamePage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
+        <div className="text-white text-xl">Загрузка игры...</div>
+      </div>
+    }>
+      <GamePageContent />
+    </Suspense>
   );
 }

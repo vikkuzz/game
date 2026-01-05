@@ -102,6 +102,7 @@ export const Header = React.memo(
       { name: "Создать визитку", href: "/create-card" },
       { name: "Розыгрыш", href: "/prize-wheel" },
       { name: "Игра", href: "/game" },
+      { name: "Сетевая игра", href: "/game/lobby" },
       { name: "Контакты", href: "/contact" },
     ];
 
