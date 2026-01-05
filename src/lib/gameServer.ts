@@ -24,7 +24,7 @@ class GameServer {
    */
   createGame(lobbyId: string, lobby: Lobby, playerSlotMap: Map<string, PlayerId>): GameRoom {
     // Определяем, какие слоты заняты ИИ игроками
-    const aiSlots = this.getAISlots(lobby.mode, playerSlotMap);
+    const aiSlots = this.determineAISlots(lobby.mode, playerSlotMap);
     
     // Создаем игроков
     const players = Array.from({ length: 4 }, (_, i) => {
@@ -66,7 +66,7 @@ class GameServer {
   /**
    * Определяет, какие слоты заняты ИИ игроками в зависимости от режима игры
    */
-  private getAISlots(mode: GameMode, playerSlotMap: Map<string, PlayerId>): Set<PlayerId> {
+  private determineAISlots(mode: GameMode, playerSlotMap: Map<string, PlayerId>): Set<PlayerId> {
     const aiSlots = new Set<PlayerId>();
     const humanSlots = new Set(playerSlotMap.values());
     

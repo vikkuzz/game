@@ -8,7 +8,8 @@ import { gameServer } from "./gameServer";
 import { handleGameAction } from "./gameActionHandler";
 import { startGameSync, stopGameSync } from "./gameSync";
 import { startGameLoop, stopGameLoop } from "./gameLoop";
-import type { Lobby, GameMode, PlayerId } from "@/types/lobby";
+import type { Lobby, GameMode } from "@/types/lobby";
+import type { PlayerId } from "@/types/game";
 
 export default function socketHandler(io: SocketIOServer) {
   // Устанавливаем Socket.IO в lobbyManager

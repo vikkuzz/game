@@ -3,7 +3,8 @@
  */
 
 import { Server as SocketIOServer } from "socket.io";
-import type { Lobby, LobbyPlayer, GameMode, PlayerId } from "@/types/lobby";
+import type { Lobby, LobbyPlayer, GameMode } from "@/types/lobby";
+import type { PlayerId } from "@/types/game";
 
 interface LobbyStore {
   [lobbyId: string]: Lobby;
