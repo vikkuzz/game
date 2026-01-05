@@ -219,6 +219,51 @@ export default function socketHandler(io: SocketIOServer) {
       }
     });
 
+    // Обработка переподключения игрока к игре
+    socket.on("game:reconnect", (data: { roomId: string; previousSocketId?: string }) => {
+      try {
+        const room = gameServer.getGame(data.roomId);
+        if (!room) {
+          socket.emit("game:error", { message: "Game room not found" });
+          return;
+        }
+
+        // Если передан предыдущий socket ID, обновляем маппинг
+        if (data.previousSocketId) {
+          const playerId = gameServer.getPlayerId(data.roomId, data.previousSocketId);
+          if (playerId !== null) {
+            // Обновляем socket ID в маппинге
+            gameServer.updatePlayerSocketId(data.roomId, data.previousSocketId, socket.id);
+            socket.join(data.roomId);
+            
+            // Отправляем обновленное состояние
+            const aiSlots = Array.from(room.aiSlots);
+            const playerSlotMap = Object.fromEntries(room.playerSlotMap);
+            socket.emit("game:state", {
+              gameState: room.gameState,
+              aiSlots: aiSlots,
+              playerSlotMap: playerSlotMap
+            });
+            
+            console.log(`[SocketHandler] Player ${playerId} reconnected to game ${data.roomId}`);
+          }
+        } else {
+          // Если предыдущий socket ID не передан, пытаемся найти по другим признакам
+          // Пока просто отправляем текущее состояние
+          const aiSlots = Array.from(room.aiSlots);
+          const playerSlotMap = Object.fromEntries(room.playerSlotMap);
+          socket.emit("game:state", {
+            gameState: room.gameState,
+            aiSlots: aiSlots,
+            playerSlotMap: playerSlotMap
+          });
+        }
+      } catch (error) {
+        console.error("Error handling reconnection:", error);
+        socket.emit("game:error", { message: "Failed to reconnect" });
+      }
+    });
+
     // Отключение клиента
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);

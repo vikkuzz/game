@@ -103,6 +103,45 @@ class GameServer {
   }
 
   /**
+   * Обновляет socket ID игрока при переподключении
+   * Ищет старый socket ID по PlayerId и обновляет его на новый
+   */
+  updatePlayerSocketId(roomId: string, oldSocketId: string, newSocketId: string): boolean {
+    const room = this.games.get(roomId);
+    if (!room) return false;
+    
+    // Ищем PlayerId по старому socket ID
+    const playerId = room.playerSlotMap.get(oldSocketId);
+    if (playerId === undefined) {
+      // Если старый socket ID не найден, возможно это новый игрок
+      // Или игрок уже был обновлен
+      return false;
+    }
+    
+    // Удаляем старый socket ID и добавляем новый
+    room.playerSlotMap.delete(oldSocketId);
+    room.playerSlotMap.set(newSocketId, playerId);
+    
+    console.log(`[GameServer] Updated socket ID for player ${playerId} in room ${roomId}: ${oldSocketId} -> ${newSocketId}`);
+    return true;
+  }
+
+  /**
+   * Находит старый socket ID по PlayerId (для переподключения)
+   */
+  findSocketIdByPlayerId(roomId: string, playerId: PlayerId): string | null {
+    const room = this.games.get(roomId);
+    if (!room) return null;
+    
+    for (const [socketId, pid] of room.playerSlotMap.entries()) {
+      if (pid === playerId) {
+        return socketId;
+      }
+    }
+    return null;
+  }
+
+  /**
    * Обновляет состояние игры
    */
   updateGameState(roomId: string, newState: GameState): void {
