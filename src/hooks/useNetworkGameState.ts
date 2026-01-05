@@ -110,44 +110,54 @@ export function useNetworkGameState({
       aiSlots?: PlayerId[];
       playerSlotMap?: Record<string, PlayerId>;
     }) => {
-      console.log("[useNetworkGameState] Received game state from server");
-      console.log("[useNetworkGameState] Game time:", data.gameState.gameTime);
-      console.log("[useNetworkGameState] Players:", data.gameState.players.map(p => ({ id: p.id, gold: p.gold, castleLevel: p.castle.level })));
-      if (data.aiSlots) {
-        console.log("[useNetworkGameState] AI slots:", data.aiSlots);
+      // Уменьшаем количество логов - логируем только при значительных изменениях
+      const shouldLog = !gameState || Math.abs(data.gameState.gameTime - (gameState?.gameTime || 0)) > 1000;
+      
+      if (shouldLog) {
+        console.log("[useNetworkGameState] Received game state from server");
+        console.log("[useNetworkGameState] Game time:", data.gameState.gameTime);
       }
+      
       if (data.playerSlotMap) {
-        console.log("[useNetworkGameState] Player slot map:", data.playerSlotMap);
         // Обновляем playerSlotMap при получении обновления от сервера
         // Это важно при переподключении или если сервер обновил маппинг
-        setCurrentPlayerSlotMap(data.playerSlotMap);
+        const playerSlotMapChanged = JSON.stringify(data.playerSlotMap) !== JSON.stringify(currentPlayerSlotMap);
         
-        // Если у нас есть socket ID, пытаемся определить playerId
-        // Если socket ID не найден, используем сохраненный playerId
-        if (socket?.id) {
-          const playerIdFromMap = data.playerSlotMap[socket.id];
-          if (playerIdFromMap !== undefined) {
-            console.log(`[useNetworkGameState] Found playerId ${playerIdFromMap} for socket ${socket.id} in updated playerSlotMap`);
-            setMyPlayerId(playerIdFromMap);
-            setSelectedPlayer(playerIdFromMap);
-            if (typeof window !== "undefined" && lobbyId) {
-              sessionStorage.setItem(`playerId_${lobbyId}`, String(playerIdFromMap));
-            }
-          } else {
-            // Если socket ID не найден, пытаемся использовать сохраненный playerId
-            if (typeof window !== "undefined" && lobbyId) {
-              const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
-              if (savedPlayerId !== null) {
-                const playerId = parseInt(savedPlayerId, 10) as PlayerId;
-                console.log(`[useNetworkGameState] Using saved playerId ${playerId} (socket ${socket.id} not in playerSlotMap)`);
-                setMyPlayerId(playerId);
-                setSelectedPlayer(playerId);
+        if (playerSlotMapChanged) {
+          setCurrentPlayerSlotMap(data.playerSlotMap);
+          
+          // Если у нас есть socket ID, пытаемся определить playerId
+          // Если socket ID не найден, используем сохраненный playerId
+          if (socket?.id) {
+            const playerIdFromMap = data.playerSlotMap[socket.id];
+            if (playerIdFromMap !== undefined && playerIdFromMap !== myPlayerId) {
+              console.log(`[useNetworkGameState] Player slot assignment - socketId: ${socket.id}, playerId: ${playerIdFromMap}`);
+              setMyPlayerId(playerIdFromMap);
+              setSelectedPlayer(playerIdFromMap);
+              if (typeof window !== "undefined" && lobbyId) {
+                sessionStorage.setItem(`playerId_${lobbyId}`, String(playerIdFromMap));
+              }
+            } else if (playerIdFromMap === undefined) {
+              // Если socket ID не найден, пытаемся использовать сохраненный playerId
+              if (typeof window !== "undefined" && lobbyId) {
+                const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
+                if (savedPlayerId !== null) {
+                  const playerId = parseInt(savedPlayerId, 10) as PlayerId;
+                  if (playerId !== myPlayerId) {
+                    console.log(`[useNetworkGameState] Using saved playerId ${playerId} (socket ${socket.id} not in playerSlotMap)`);
+                    setMyPlayerId(playerId);
+                    setSelectedPlayer(playerId);
+                  }
+                }
               }
             }
           }
         }
       }
-      // Обновляем состояние игры полностью от сервера (это источник истины)
+      // В сетевом режиме состояние от сервера используется для синхронизации действий
+      // Но игровой цикл работает локально, поэтому мы не перезаписываем gameState полностью
+      // Вместо этого мы сохраняем его для использования в синхронизации
+      // Но не устанавливаем как основной источник, чтобы локальный цикл продолжал работать
       setGameState(data.gameState);
     };
 
