@@ -35,14 +35,15 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
     ? Math.max(0, 5000 - (now - building.lastUnitPurchaseTime))
     : 0;
   
+  const needsCastleUpgrade = 
+    building.type === "barracks" &&
+    building.level >= 2 &&
+    player.castle.level < 2;
+  
   const canUpgrade =
     player.gold >= upgradeCost &&
     !(building.upgradeCooldown && building.upgradeCooldown > 0) &&
-    !(
-      building.type === "barracks" &&
-      building.level >= 2 &&
-      player.castle.level < 2
-    );
+    !needsCastleUpgrade;
   
   const canRepair =
     building.health < building.maxHealth &&
@@ -226,6 +227,12 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
 
             {/* Действия */}
             <div className="space-y-2 pt-2">
+              {needsCastleUpgrade && (
+                <div className="bg-orange-900/30 border border-orange-700 rounded p-2 text-xs text-orange-300">
+                  ⚠️ Для улучшения барака до {building.level + 1} уровня требуется замок 2 уровня
+                </div>
+              )}
+              
               <Button
                 onClick={onUpgrade}
                 disabled={!canUpgrade}
