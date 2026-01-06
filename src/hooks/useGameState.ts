@@ -967,7 +967,14 @@ export function useGameState() {
   }, []);
 
   const toggleAutoUpgrade = useCallback(() => {
-    setGameState((prev) => ({ ...prev, autoUpgrade: !prev.autoUpgrade }));
+    setGameState((prev) => ({
+      ...prev,
+      players: prev.players.map((p) =>
+        p.id === prev.selectedPlayer
+          ? { ...p, autoUpgrade: !p.autoUpgrade }
+          : p
+      ),
+    }));
   }, []);
 
   const setGameSpeed = useCallback((speed: number) => {
@@ -1376,7 +1383,7 @@ export function useGameState() {
             // В локальном режиме: игрок 0 — только если autoUpgrade включен,
             // остальные игроки считаются ИИ и всегда получают авторазвитие
             if (p.id === 0) {
-              return prev.autoUpgrade;
+              return p.autoUpgrade;
             }
             return true;
           })
@@ -1972,7 +1979,6 @@ export function useGameState() {
   }, [
     gameState.isPaused,
     gameState.gameOver,
-    gameState.autoUpgrade,
     gameState.selectedPlayer,
   ]);
 

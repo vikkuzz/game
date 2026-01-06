@@ -89,6 +89,7 @@ export interface Player {
   upgrades: CastleUpgrades;
   isActive: boolean;
   stats: PlayerStats;
+  autoUpgrade: boolean; // Индивидуальный флаг авторазвития для игрока
 }
 
 export interface GameState {

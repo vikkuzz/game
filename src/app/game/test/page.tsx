@@ -75,6 +75,7 @@ export default function TestPage() {
       damageTaken: 0,
       goldEarned: 0,
     },
+    autoUpgrade: false,
   }));
 
   const mockGameState: GameState = {

@@ -63,10 +63,17 @@ export function handleGameAction(
       return gameState;
     case "toggleAutoUpgrade":
       // В сетевом режиме автопрокачка должна быть авторитетной на сервере
-      // Переключаем глобальный флаг autoUpgrade в состоянии игры
+      // Переключаем индивидуальный флаг autoUpgrade для конкретного игрока
       return {
         ...gameState,
-        autoUpgrade: !gameState.autoUpgrade,
+        players: gameState.players.map((p) =>
+          p.id === playerId
+            ? {
+                ...p,
+                autoUpgrade: !p.autoUpgrade,
+              }
+            : p
+        ),
       };
     default:
       console.warn(`Unknown action type: ${(action as any).type}`);

@@ -335,7 +335,7 @@ function getUpgradeStatForBranch(
 /**
  * Улучшенное серверное авторазвитие с 3 ветками логики
  * - ИИ-игроки (aiSlots) всегда получают автоапгрейд
- * - Реальные игроки получают автоапгрейд только если включён флаг gameState.autoUpgrade
+ * - Реальные игроки получают автоапгрейд только если включён их индивидуальный флаг player.autoUpgrade
  * 
  * Ветки развития:
  * 1. Экономическая - фокус на доход и экономику (goldIncome, buildingHealth, health)
@@ -363,9 +363,9 @@ function applyAutoUpgradeTick(room: GameRoom, deltaTime: number): GameState {
         if (!p.isActive) return false;
         const isAI = room.aiSlots.has(p.id);
         const isHuman = !isAI;
-        if (isAI) return true;
-        // Для людей смотрим глобальный флаг авторазвития
-        return current.autoUpgrade && isHuman;
+        if (isAI) return true; // ИИ-игроки всегда получают автоапгрейд
+        // Для людей смотрим индивидуальный флаг авторазвития
+        return p.autoUpgrade && isHuman;
       })
       .map((p) => p.id as PlayerId);
 

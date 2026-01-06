@@ -392,12 +392,12 @@ export const MobileControlPanel: React.FC<MobileControlPanelProps> = ({
                       onClick={onToggleAutoUpgrade}
                       className={cn(
                         "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
-                        gameState.autoUpgrade ? "bg-blue-600" : "bg-gray-300"
+                        player.autoUpgrade ? "bg-blue-600" : "bg-gray-300"
                       )}>
                       <span
                         className={cn(
                           "inline-block h-5 w-5 transform rounded-full bg-white transition-transform",
-                          gameState.autoUpgrade ? "translate-x-6" : "translate-x-1"
+                          player.autoUpgrade ? "translate-x-6" : "translate-x-1"
                         )}
                       />
                     </button>

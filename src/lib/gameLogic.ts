@@ -279,6 +279,7 @@ export function createPlayer(playerId: PlayerId, mapSize: number): Player {
       damageTaken: 0,
       goldEarned: 0,
     },
+    autoUpgrade: false, // Индивидуальный флаг авторазвития (по умолчанию выключен)
   };
 }
 

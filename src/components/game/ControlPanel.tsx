@@ -100,12 +100,12 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
               onClick={onToggleAutoUpgrade}
               className={cn(
                 "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-                gameState.autoUpgrade ? "bg-blue-600" : "bg-gray-300"
+                player.autoUpgrade ? "bg-blue-600" : "bg-gray-300"
               )}>
               <span
                 className={cn(
                   "inline-block h-4 w-4 transform rounded-full bg-white transition-transform",
-                  gameState.autoUpgrade ? "translate-x-6" : "translate-x-1"
+                  player.autoUpgrade ? "translate-x-6" : "translate-x-1"
                 )}
               />
             </button>
