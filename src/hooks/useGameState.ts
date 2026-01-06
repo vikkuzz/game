@@ -352,9 +352,15 @@ export function useGameState() {
     };
   }, [gameState.isPaused, gameState.gameSpeed]);
 
-  // Получение золота
+  // Получение золота (только в локальном режиме, в сетевой игре это делает сервер)
   useEffect(() => {
     if (gameState.isPaused) return;
+
+    // В сетевом режиме инком считается на сервере
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
 
     const goldInterval = setInterval(() => {
       setGameState((prev) => {
@@ -389,8 +395,14 @@ export function useGameState() {
   }, [gameState.isPaused, gameState.gameSpeed]);
 
   // Спавн юнитов из бараков (бесплатный автоматический спавн)
+  // В сетевом режиме этим занимается сервер
   useEffect(() => {
     if (gameState.isPaused) return;
+
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
 
     const spawnInterval = setInterval(() => {
       setGameState((prev) => {
@@ -479,8 +491,14 @@ export function useGameState() {
   }, [gameState.isPaused, gameState.gameSpeed]);
 
   // Обновление кулдаунов улучшений и починки
+  // В сетевом режиме этим занимается сервер
   useEffect(() => {
     if (gameState.isPaused) return;
+
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
 
     const cooldownInterval = setInterval(() => {
       setGameState((prev) => ({
@@ -512,8 +530,14 @@ export function useGameState() {
   }, [gameState.isPaused]);
 
   // Восстановление доступных юнитов в бараках
+  // В сетевом режиме восстанавливает сервер
   useEffect(() => {
     if (gameState.isPaused) return;
+
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
 
     const restoreInterval = setInterval(() => {
       setGameState((prev) => ({
@@ -958,8 +982,14 @@ export function useGameState() {
   }, []);
 
   // ИИ для автоматических игроков (все кроме игрока 0)
+  // В сетевом режиме сервер будет управлять ИИ, поэтому на клиенте ИИ отключаем
   useEffect(() => {
     if (gameState.isPaused || gameState.gameOver) return;
+
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
 
     const aiInterval = setInterval(() => {
       setGameState((prev) => {
@@ -1281,6 +1311,8 @@ export function useGameState() {
   }, [gameState.isPaused, gameState.gameOver]);
 
   // Автоматическое развитие
+  // В сетевом режиме логика авторазвития должна быть на сервере,
+  // поэтому на клиенте выполняем её только в локальном режиме
   useEffect(() => {
     if (gameState.isPaused || gameState.gameOver) {
       return;
@@ -1291,6 +1323,11 @@ export function useGameState() {
         // Определяем, находимся ли мы в сетевом режиме
         const isNetworkMode = typeof window !== "undefined" && 
           sessionStorage.getItem("networkGameData") !== null;
+
+        // В сетевом режиме авторазвитие должен считать сервер — выходим
+        if (isNetworkMode) {
+          return prev;
+        }
         
         // Получаем aiSlots из sessionStorage, если они там есть
         let aiSlots: PlayerId[] = [];
@@ -1314,41 +1351,15 @@ export function useGameState() {
         // В сетевом режиме, если aiSlots не загружен или пуст, не выполняем авторазвитие вообще
         // Это важно: если aiSlots пуст, значит либо данные не загружены, либо нет ИИ игроков
         // В любом случае, не выполняем авторазвитие для безопасности
-        if (isNetworkMode) {
-          // В сетевом режиме ВСЕГДА проверяем aiSlots
-          // Если aiSlots пуст или не загружен, не выполняем авторазвитие
-          if (!Array.isArray(aiSlots) || aiSlots.length === 0) {
-            return prev; // Не выполняем авторазвитие, если aiSlots не загружен или пуст
-          }
-        }
-        
         const playersToUpgrade: PlayerId[] = prev.players
           .filter((p) => {
             if (!p.isActive) return false;
-            
-            if (isNetworkMode) {
-              // В сетевом режиме: авторазвитие для ИИ слотов И для реальных игроков (только если autoUpgrade включен)
-              // Проверяем, что aiSlots загружен и является массивом
-              if (!Array.isArray(aiSlots) || aiSlots.length === 0) {
-                return false; // Если aiSlots не загружен, не выполняем авторазвитие
-              }
-              
-              // Если игрок в aiSlots - это ИИ, получает авторазвитие
-              if (aiSlots.includes(p.id)) {
-                return true;
-              }
-              
-              // Если игрок НЕ в aiSlots - это реальный игрок
-              // Реальные игроки получают авторазвитие только если autoUpgrade включен (как синий игрок в локальном режиме)
+            // В локальном режиме: игрок 0 — только если autoUpgrade включен,
+            // остальные игроки считаются ИИ и всегда получают авторазвитие
+            if (p.id === 0) {
               return prev.autoUpgrade;
-            } else {
-              // В локальном режиме: игрок 0 - только если autoUpgrade включен
-              if (p.id === 0) {
-                return prev.autoUpgrade;
-              }
-              // Остальные игроки - всегда ИИ
-              return true;
             }
+            return true;
           })
           .map((p) => p.id);
 

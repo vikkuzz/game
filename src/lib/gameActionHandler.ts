@@ -62,8 +62,12 @@ export function handleGameAction(
       // Обрабатывается на уровне gameServer
       return gameState;
     case "toggleAutoUpgrade":
-      // Автопрокачка - локальное действие игрока, не требует обработки на сервере
-      return gameState;
+      // В сетевом режиме автопрокачка должна быть авторитетной на сервере
+      // Переключаем глобальный флаг autoUpgrade в состоянии игры
+      return {
+        ...gameState,
+        autoUpgrade: !gameState.autoUpgrade,
+      };
     default:
       console.warn(`Unknown action type: ${(action as any).type}`);
       return null;

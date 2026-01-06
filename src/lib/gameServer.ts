@@ -7,7 +7,7 @@ import type { GameState, Player, PlayerId } from "@/types/game";
 import { createPlayer, GAME_CONFIG } from "@/lib/gameLogic";
 import type { Lobby, GameMode } from "@/types/lobby";
 
-interface GameRoom {
+export interface GameRoom {
   id: string; // ID лобби
   gameState: GameState;
   playerSlotMap: Map<string, PlayerId>; // socket.id -> PlayerId
@@ -15,6 +15,13 @@ interface GameRoom {
   lastUpdate: number;
   aiSlots: Set<PlayerId>; // Слоты, занятые ИИ игроками
   speedVotes: Map<PlayerId, number>; // Голоса игроков за скорость (playerId -> speed)
+  // Вспомогательные таймеры для серверной симуляции (в миллисекундах)
+  goldTimer: number;
+  spawnTimer: number;
+  cooldownTimer: number;
+  restoreTimer: number;
+  autoUpgradeTimer: number;
+  aiDecisionTimer: number;
 }
 
 class GameServer {
@@ -59,6 +66,12 @@ class GameServer {
       lastUpdate: Date.now(),
       aiSlots,
       speedVotes: new Map<PlayerId, number>(), // Инициализируем систему голосования
+      goldTimer: 0,
+      spawnTimer: 0,
+      cooldownTimer: 0,
+      restoreTimer: 0,
+      autoUpgradeTimer: 0,
+      aiDecisionTimer: 0,
     };
 
     this.games.set(lobbyId, room);

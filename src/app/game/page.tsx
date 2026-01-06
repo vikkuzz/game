@@ -48,29 +48,31 @@ function GamePageContent() {
     }
   }, [isNetworkMode, router]);
 
-  // Локальное состояние игры (всегда используется для игрового цикла)
-  const localGame = useGameState();
+  // В оффлайн-режиме используем локальное состояние и игровой цикл,
+  // в сетевом режиме — только состояние, приходящее с сервера.
+  const localGame = !isNetworkMode ? useGameState() : null;
 
-  // Сетевое состояние игры (используется только для получения начального состояния и отправки действий)
-  const networkGame = useNetworkGameState(
-    networkGameData && socket
-      ? {
-          lobbyId: networkGameData.lobby.id,
-          playerSlotMap: networkGameData.playerSlotMap,
-          socketId: socket.id || null,
-          socket,
-          isConnected,
-          aiSlots: networkGameData.aiSlots || [],
-        }
-      : {
-          lobbyId: "",
-          playerSlotMap: {},
-          socketId: null,
-          socket: null,
-          isConnected: false,
-          aiSlots: [],
-        }
-  );
+  const networkGame = isNetworkMode
+    ? useNetworkGameState(
+        networkGameData && socket
+          ? {
+              lobbyId: networkGameData.lobby.id,
+              playerSlotMap: networkGameData.playerSlotMap,
+              socketId: socket.id || null,
+              socket,
+              isConnected,
+              aiSlots: networkGameData.aiSlots || [],
+            }
+          : {
+              lobbyId: "",
+              playerSlotMap: {},
+              socketId: null,
+              socket: null,
+              isConnected: false,
+              aiSlots: [],
+            }
+      )
+    : ({} as ReturnType<typeof useNetworkGameState>);
 
   // Определяем myPlayerId для сетевого режима
   // Используем сохраненный playerId из sessionStorage, если networkGame.myPlayerId не определен
@@ -91,167 +93,53 @@ function GamePageContent() {
     ? (networkGame.myPlayerId ?? savedPlayerId)
     : null;
 
-  // В сетевом режиме используем локальный игровой цикл для отзывчивости
-  // Состояние от сервера используется для синхронизации действий игроков
-  // Но игровой цикл (спавн, доход, движение, бой) работает локально
-  const gameState = localGame.gameState;
-  
-  // Синхронизируем изменения от сервера с локальной игрой
-  // Применяем действия других игроков к локальному состоянию
-  const lastSyncRef = React.useRef<number>(0);
-  useEffect(() => {
-    if (isNetworkMode && networkGame.gameState && localGame.gameState && myPlayerId !== null) {
-      const serverState = networkGame.gameState;
-      const localState = localGame.gameState;
-      const now = Date.now();
-      
-      // Синхронизируем не чаще раза в 100мс, чтобы не перегружать
-      if (now - lastSyncRef.current < 100) return;
-      lastSyncRef.current = now;
-      
-      // Проверяем, есть ли изменения от других игроков
-      let hasChanges = false;
-      const updatedPlayers = localState.players.map((localPlayer, playerIndex) => {
-        const serverPlayer = serverState.players[playerIndex];
-        if (!serverPlayer || !localPlayer) return localPlayer;
-        
-        // Если это не текущий игрок, применяем изменения от сервера
-        if (serverPlayer.id !== myPlayerId) {
-          // Проверяем, есть ли изменения в статических полях (уровни, улучшения, структура зданий)
-          // НЕ синхронизируем динамические поля (золото, спавн, кулдауны), которые обновляются локальным циклом
-          const staticFieldsChanged = 
-            serverPlayer.castle.level !== localPlayer.castle.level ||
-            serverPlayer.castle.maxHealth !== localPlayer.castle.maxHealth ||
-            serverPlayer.barracks.length !== localPlayer.barracks.length ||
-            serverPlayer.towers.length !== localPlayer.towers.length ||
-            JSON.stringify(serverPlayer.upgrades) !== JSON.stringify(localPlayer.upgrades) ||
-            serverPlayer.goldIncome !== localPlayer.goldIncome;
-          
-          // Проверяем изменения в зданиях (уровни, структура)
-          const buildingsChanged = 
-            JSON.stringify(serverPlayer.barracks.map(b => ({ id: b.id, level: b.level, maxHealth: b.maxHealth }))) !== 
-            JSON.stringify(localPlayer.barracks.map(b => ({ id: b.id, level: b.level, maxHealth: b.maxHealth }))) ||
-            JSON.stringify(serverPlayer.towers.map(t => ({ id: t.id, level: t.level, maxHealth: t.maxHealth }))) !== 
-            JSON.stringify(localPlayer.towers.map(t => ({ id: t.id, level: t.level, maxHealth: t.maxHealth })));
-          
-          if (staticFieldsChanged || buildingsChanged) {
-            hasChanges = true;
-            // Применяем изменения от сервера, но сохраняем динамические поля от локального состояния
-            // Это предотвращает "откат" золота, спавна и других динамических полей
-            return {
-              ...serverPlayer,
-              // Сохраняем динамические поля от локального состояния
-              gold: localPlayer.gold, // Золото обновляется локальным циклом
-              // Сохраняем локальные юниты для плавности движения
-              units: localPlayer.units,
-              // Обновляем здания, но сохраняем динамические поля (health, spawnCooldown, repairCooldown)
-              castle: {
-                ...serverPlayer.castle,
-                health: localPlayer.castle.health, // Здоровье может изменяться локально (атаки)
-                repairCooldown: localPlayer.castle.repairCooldown, // Кулдаун обновляется локально
-              },
-              barracks: serverPlayer.barracks.map(serverBarrack => {
-                const localBarrack = localPlayer.barracks.find(b => b.id === serverBarrack.id);
-                if (localBarrack) {
-                  return {
-                    ...serverBarrack,
-                    health: localBarrack.health, // Здоровье может изменяться локально
-                    spawnCooldown: localBarrack.spawnCooldown, // Спавн обновляется локально
-                    repairCooldown: localBarrack.repairCooldown, // Кулдаун обновляется локально
-                    availableUnits: localBarrack.availableUnits, // Доступные юниты обновляются локально
-                  };
-                }
-                return serverBarrack;
-              }),
-              towers: serverPlayer.towers.map(serverTower => {
-                const localTower = localPlayer.towers.find(t => t.id === serverTower.id);
-                if (localTower) {
-                  return {
-                    ...serverTower,
-                    health: localTower.health, // Здоровье может изменяться локально
-                    repairCooldown: localTower.repairCooldown, // Кулдаун обновляется локально
-                  };
-                }
-                return serverTower;
-              }),
-            };
-          }
-        }
-        return localPlayer;
-      });
-      
-      // Если есть изменения, применяем их к локальному состоянию
-      if (hasChanges) {
-        // Применяем изменения через setGameState
-        localGame.setGameState((prev) => ({
-          ...prev,
-          players: updatedPlayers,
-          // Также синхронизируем другие поля от сервера
-          gameTime: serverState.gameTime,
-          isPaused: serverState.isPaused,
-          gameSpeed: serverState.gameSpeed,
-        }));
-      }
-    }
-  }, [isNetworkMode, networkGame.gameState, localGame.gameState, myPlayerId]);
+  // В зависимости от режима берём состояние игры либо с сервера, либо из локального хука.
+  const gameState = isNetworkMode
+    ? networkGame.gameState
+    : localGame.gameState;
 
-  // В сетевом режиме используем сетевые действия для отправки на сервер,
-  // но также применяем их локально для немедленного отклика
+  // Набор действий в игре:
+  // - в сетевом режиме: только отправка на сервер (сервер — единственный источник истины)
+  // - в оффлайн-режиме: локальные изменения через useGameState
   const gameActions = isNetworkMode && networkGameData
     ? {
-        // Отправляем действия на сервер, но также применяем локально
         buyUnit: (playerId: PlayerId, barrackId: string, unitType: UnitType) => {
           networkGame.buyUnit(playerId, barrackId, unitType);
-          localGame.buyUnit(playerId, barrackId, unitType);
         },
         upgradeBuilding: (playerId: PlayerId, buildingId: string) => {
           networkGame.upgradeBuilding(playerId, buildingId);
-          localGame.upgradeBuilding(playerId, buildingId);
         },
         repairBuilding: (playerId: PlayerId, buildingId: string) => {
           networkGame.repairBuilding(playerId, buildingId);
-          localGame.repairBuilding(playerId, buildingId);
         },
-        upgradeCastleStat: (playerId: PlayerId, stat: keyof import("@/types/game").CastleUpgrades) => {
+        upgradeCastleStat: (
+          playerId: PlayerId,
+          stat: keyof import("@/types/game").CastleUpgrades
+        ) => {
           networkGame.upgradeCastleStat(playerId, stat);
-          localGame.upgradeCastleStat(playerId, stat);
         },
         togglePause: () => {
           networkGame.togglePause();
-          localGame.togglePause();
         },
         toggleAutoUpgrade: () => {
           networkGame.toggleAutoUpgrade();
-          localGame.toggleAutoUpgrade();
         },
         setGameSpeed: (speed: number) => {
-          // В сетевом режиме отправляем голос вместо прямого изменения скорости
-          // Прямое изменение применяется только локально для отображения
-          if (networkGame.gameState) {
-            // Отправляем голос на сервер
-            networkGame.voteForSpeed?.(speed);
-          }
-          // В локальном режиме применяем сразу
-          if (!isNetworkMode) {
-            localGame.setGameSpeed(speed);
-          }
+          // В сетевом режиме отправляем только голос на сервер
+          networkGame.voteForSpeed?.(speed);
         },
         selectPlayer: (playerId: PlayerId) => {
           // В сетевом режиме запрещаем переключение между игроками
-          if (isNetworkMode && myPlayerId !== null && playerId !== myPlayerId) {
-            return; // Игнорируем попытку переключения на другого игрока
+          if (myPlayerId !== null && playerId !== myPlayerId) {
+            return;
           }
-          // В сетевом режиме обновляем и сетевой, и локальный selectedPlayer
           networkGame.selectPlayer(playerId);
-          localGame.selectPlayer(playerId);
         },
         selectBuilding: (buildingId: string | null) => {
-          // В сетевом режиме обновляем и сетевой, и локальный selectedBuilding
           networkGame.selectBuilding(buildingId);
-          localGame.selectBuilding(buildingId);
         },
         restartGame: () => {
-          // В сетевом режиме перезапуск не поддерживается
+          // В сетевой игре перезапуск делается через новое лобби
           router.push("/game/lobby");
         },
       }
@@ -280,8 +168,13 @@ function GamePageContent() {
       selectedPlayerInitialized.current = false;
       lastMyPlayerId.current = myPlayerId;
     }
-    
-    if (isNetworkMode && myPlayerId !== null && !selectedPlayerInitialized.current) {
+
+    if (
+      isNetworkMode &&
+      myPlayerId !== null &&
+      gameState &&
+      !selectedPlayerInitialized.current
+    ) {
       // Автоматически выбираем своего игрока при загрузке (только один раз)
       if (gameState.selectedPlayer !== myPlayerId) {
         selectPlayer(myPlayerId);
@@ -291,7 +184,7 @@ function GamePageContent() {
         selectedPlayerInitialized.current = true;
       }
     }
-  }, [isNetworkMode, myPlayerId, gameState.selectedPlayer, selectPlayer]);
+  }, [isNetworkMode, myPlayerId, gameState?.selectedPlayer, selectPlayer]);
   
   // В сетевом режиме не нужно синхронизировать локальное состояние,
   // так как мы используем состояние от сервера напрямую
@@ -372,7 +265,7 @@ function GamePageContent() {
             </div>
           </div>
           {/* Золото и доход */}
-          {gameState.players[gameState.selectedPlayer || 0] && (
+          {gameState && gameState.players[gameState.selectedPlayer || 0] && (
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1">
                 <span className="text-gray-400">💰</span>
@@ -434,7 +327,7 @@ function GamePageContent() {
           <div className="flex items-center gap-4">
             <h1 className="text-2xl md:text-3xl font-bold text-white">Survival Chaos</h1>
             {/* Золото и доход */}
-            {gameState.players[gameState.selectedPlayer || 0] && (
+            {gameState && gameState.players[gameState.selectedPlayer || 0] && (
               <div className="flex items-center gap-4 text-base">
                 <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1.5 rounded-lg">
                   <span className="text-yellow-400">💰</span>
