@@ -30,6 +30,10 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
   const healthPercent = (building.health / building.maxHealth) * 100;
   const upgradeCost = building.level * 200;
   const repairCost = 100;
+  const now = Date.now();
+  const buyCooldownMs = building.lastUnitPurchaseTime
+    ? Math.max(0, 5000 - (now - building.lastUnitPurchaseTime))
+    : 0;
   
   const canUpgrade =
     player.gold >= upgradeCost &&
@@ -251,7 +255,8 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
                   onClick={() => onBuyUnit("warrior")}
                   disabled={
                     player.gold < GAME_CONFIG.unitCost.warrior ||
-                    (building.availableUnits || 0) <= 0
+                    (building.availableUnits || 0) <= 0 ||
+                    buyCooldownMs > 0
                   }
                   variant="success"
                   size="lg"
@@ -261,6 +266,12 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
                     {GAME_CONFIG.unitCost.warrior} 🪙
                   </span>
                 </Button>
+              )}
+
+              {building.type === "barracks" && buyCooldownMs > 0 && (
+                <div className="text-xs text-gray-300 bg-gray-800/60 p-2 rounded">
+                  ⏱️ Покупка через {Math.ceil(buyCooldownMs / 1000)}с
+                </div>
               )}
             </div>
 

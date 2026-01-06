@@ -19,8 +19,6 @@ import {
   getSpawnUnitType,
   getSpawnInterval,
   getDistance,
-  hasEnemyInBarrackCell,
-  hasAllyWarriorInBarrackCell,
   GAME_CONFIG,
 } from "@/lib/gameLogic";
 import { COMBAT_CONSTANTS } from "@/lib/game/constants";
@@ -611,23 +609,6 @@ export function useGameState() {
           return prev; // Кулдаун еще не прошел
         }
 
-        // Собираем всех юнитов для проверки
-        const allUnits = prev.players
-          .flatMap((p) => p.units)
-          .filter((u) => u.health > 0);
-
-        // Проверка: есть ли враг в клетке барака
-        const hasEnemy = hasEnemyInBarrackCell(barrack, allUnits);
-        if (!hasEnemy) {
-          return prev; // Нет врагов в клетке - не покупаем
-        }
-
-        // Проверка: нет ли союзного воина в клетке барака
-        const hasAllyWarrior = hasAllyWarriorInBarrackCell(barrack, allUnits);
-        if (hasAllyWarrior) {
-          return prev; // Есть союзный воин - не покупаем
-        }
-
         if (player.gold >= cost && availableUnits > 0) {
           const barrackIndex = player.barracks.findIndex(
             (b) => b.id === barrackId
@@ -1053,60 +1034,44 @@ export function useGameState() {
               ) {
                 // Кулдаун еще не прошел - пропускаем покупку
               } else if (availableUnits > 0) {
-                // Собираем всех юнитов для проверки
-                const allUnits = prev.players
-                  .flatMap((p) => p.units)
-                  .filter((u) => u.health > 0);
+                const unitType: UnitType = "warrior"; // Только воины
+                const cost = GAME_CONFIG.unitCost[unitType];
 
-                // Проверка: есть ли враг в клетке барака
-                const hasEnemy = hasEnemyInBarrackCell(barrack, allUnits);
+                // Проверяем стоимость конкретного юнита и наличие резерва для улучшений
+                // ИИ должен иметь минимум 200 золота в резерве после покупки для улучшений
+                if (player.gold >= cost + 200) {
+                  updated = true;
+                  const barrackIndex = player.barracks.findIndex(
+                    (b) => b.id === barrack.id
+                  );
+                  const targetPos = getUnitTarget(
+                    player.id,
+                    barrackIndex,
+                    GAME_CONFIG.mapSize
+                  );
+                  const newUnit = createUnit(
+                    unitType,
+                    player.id,
+                    barrack.position,
+                    targetPos,
+                    player.upgrades,
+                    barrackIndex
+                  );
 
-                // Проверка: нет ли союзного воина в клетке барака
-                const hasAllyWarrior = hasAllyWarriorInBarrackCell(
-                  barrack,
-                  allUnits
-                );
-
-                if (hasEnemy && !hasAllyWarrior) {
-                  const unitType: UnitType = "warrior"; // Только воины
-                  const cost = GAME_CONFIG.unitCost[unitType];
-
-                  // Проверяем стоимость конкретного юнита и наличие резерва для улучшений
-                  // ИИ должен иметь минимум 200 золота в резерве после покупки для улучшений
-                  if (player.gold >= cost + 200) {
-                    updated = true;
-                    const barrackIndex = player.barracks.findIndex(
-                      (b) => b.id === barrack.id
-                    );
-                    const targetPos = getUnitTarget(
-                      player.id,
-                      barrackIndex,
-                      GAME_CONFIG.mapSize
-                    );
-                    const newUnit = createUnit(
-                      unitType,
-                      player.id,
-                      barrack.position,
-                      targetPos,
-                      player.upgrades,
-                      barrackIndex
-                    );
-
-                    return {
-                      ...player,
-                      gold: player.gold - cost,
-                      units: [...player.units, newUnit],
-                      barracks: player.barracks.map((b) =>
-                        b.id === barrack.id
-                          ? {
-                              ...b,
-                              availableUnits: (b.availableUnits || 0) - 1,
-                              lastUnitPurchaseTime: now,
-                            }
-                          : b
-                      ),
-                    };
-                  }
+                  return {
+                    ...player,
+                    gold: player.gold - cost,
+                    units: [...player.units, newUnit],
+                    barracks: player.barracks.map((b) =>
+                      b.id === barrack.id
+                        ? {
+                            ...b,
+                            availableUnits: (b.availableUnits || 0) - 1,
+                            lastUnitPurchaseTime: now,
+                          }
+                        : b
+                    ),
+                  };
                 }
               }
             }

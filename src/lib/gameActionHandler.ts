@@ -9,8 +9,6 @@ import {
   GAME_CONFIG,
   getUnitTarget,
   createUnit,
-  hasEnemyInBarrackCell,
-  hasAllyWarriorInBarrackCell,
   getSpawnInterval,
 } from "@/lib/gameLogic";
 
@@ -110,23 +108,6 @@ function handleBuyUnit(
     now - barrack.lastUnitPurchaseTime < 5000
   ) {
     return null; // Кулдаун еще не прошел
-  }
-
-  // Собираем всех юнитов для проверки
-  const allUnits = gameState.players
-    .flatMap((p) => p.units)
-    .filter((u) => u.health > 0);
-
-  // Проверка: есть ли враг в клетке барака
-  const hasEnemy = hasEnemyInBarrackCell(barrack, allUnits);
-  if (!hasEnemy) {
-    return null; // Нет врагов в клетке - не покупаем
-  }
-
-  // Проверка: нет ли союзного воина в клетке барака
-  const hasAllyWarrior = hasAllyWarriorInBarrackCell(barrack, allUnits);
-  if (hasAllyWarrior) {
-    return null; // Есть союзный воин - не покупаем
   }
 
   if (player.gold >= cost && availableUnits > 0) {
