@@ -234,10 +234,113 @@ function applyUnitRestoreTick(room: GameRoom, deltaTime: number): GameState {
 }
 
 /**
- * Простейшее серверное авторазвитие
+ * Типы веток авторазвития
+ */
+type AutoUpgradeBranch = "economic" | "offensive" | "defensive";
+
+/**
+ * Определяет ветку авторазвития для игрока на основе текущей ситуации
+ */
+function determineAutoUpgradeBranch(
+  player: GameState["players"][0],
+  allPlayers: GameState["players"]
+): AutoUpgradeBranch {
+  // Анализируем ситуацию игрока
+  const totalUnits = player.units.length;
+  const totalEnemyUnits = allPlayers
+    .filter((p) => p.id !== player.id && p.isActive)
+    .reduce((sum, p) => sum + p.units.length, 0);
+
+  const playerHealth = player.castle.health / player.castle.maxHealth;
+  const avgEnemyHealth = allPlayers
+    .filter((p) => p.id !== player.id && p.isActive)
+    .map((p) => p.castle.health / p.castle.maxHealth)
+    .reduce((sum, h, _, arr) => sum + h / arr.length, 0);
+
+  const goldRatio = player.gold / 1000; // Нормализуем золото
+
+  // Экономическая ветка: если мало золота или низкий доход
+  if (player.upgrades.goldIncome < 2 || goldRatio < 0.5) {
+    return "economic";
+  }
+
+  // Атакующая ветка: если больше юнитов у врагов или низкое здоровье врагов
+  if (totalEnemyUnits > totalUnits * 1.2 || avgEnemyHealth < 0.7) {
+    return "offensive";
+  }
+
+  // Защитная ветка: если здоровье игрока низкое или враги сильнее
+  if (playerHealth < 0.6 || totalEnemyUnits > totalUnits) {
+    return "defensive";
+  }
+
+  // По умолчанию - экономическая ветка
+  return "economic";
+}
+
+/**
+ * Получает приоритетный стат для улучшения в зависимости от ветки
+ */
+function getUpgradeStatForBranch(
+  branch: AutoUpgradeBranch,
+  player: GameState["players"][0]
+): keyof GameState["players"][0]["upgrades"] | null {
+  const upgrades = player.upgrades;
+  const gold = player.gold;
+
+  switch (branch) {
+    case "economic":
+      // Экономическая ветка: доход > здоровье зданий > здоровье замка
+      if (gold >= (upgrades.goldIncome + 1) * 150) {
+        if (upgrades.goldIncome < 3) return "goldIncome";
+        if (upgrades.buildingHealth < 2 && gold >= (upgrades.buildingHealth + 1) * 150) {
+          return "buildingHealth";
+        }
+        if (upgrades.health < 2 && gold >= (upgrades.health + 1) * 150) {
+          return "health";
+        }
+      }
+      break;
+
+    case "offensive":
+      // Атакующая ветка: атака > атака зданий > доход
+      if (gold >= (upgrades.attack + 1) * 150) {
+        if (upgrades.attack < 3) return "attack";
+        if (upgrades.buildingAttack < 2 && gold >= (upgrades.buildingAttack + 1) * 150) {
+          return "buildingAttack";
+        }
+        if (upgrades.goldIncome < 2 && gold >= (upgrades.goldIncome + 1) * 150) {
+          return "goldIncome";
+        }
+      }
+      break;
+
+    case "defensive":
+      // Защитная ветка: защита > здоровье > здоровье зданий
+      if (gold >= (upgrades.defense + 1) * 150) {
+        if (upgrades.defense < 3) return "defense";
+        if (upgrades.health < 2 && gold >= (upgrades.health + 1) * 150) {
+          return "health";
+        }
+        if (upgrades.buildingHealth < 2 && gold >= (upgrades.buildingHealth + 1) * 150) {
+          return "buildingHealth";
+        }
+      }
+      break;
+  }
+
+  return null;
+}
+
+/**
+ * Улучшенное серверное авторазвитие с 3 ветками логики
  * - ИИ-игроки (aiSlots) всегда получают автоапгрейд
  * - Реальные игроки получают автоапгрейд только если включён флаг gameState.autoUpgrade
- * Для простоты пока апгрейдим только доход золота (goldIncome).
+ * 
+ * Ветки развития:
+ * 1. Экономическая - фокус на доход и экономику (goldIncome, buildingHealth, health)
+ * 2. Атакующая - фокус на атаку и урон (attack, buildingAttack, goldIncome)
+ * 3. Защитная - фокус на защиту и выживание (defense, health, buildingHealth)
  */
 function applyAutoUpgradeTick(room: GameRoom, deltaTime: number): GameState {
   const interval = 2000; // проверка каждые 2 секунды
@@ -272,14 +375,47 @@ function applyAutoUpgradeTick(room: GameRoom, deltaTime: number): GameState {
 
     let newState = current;
 
-    // Для простоты: каждый тик пытаемся один раз улучшить goldIncome для каждого кандидата
+    // Для каждого игрока определяем ветку и улучшаем соответствующий стат
     for (const playerId of playersToUpgrade) {
+      const player = newState.players[playerId];
+      if (!player || !player.isActive) continue;
+
+      // Определяем ветку развития на основе текущей ситуации
+      const branch = determineAutoUpgradeBranch(player, newState.players);
+
+      // Получаем приоритетный стат для улучшения
+      const statToUpgrade = getUpgradeStatForBranch(branch, player);
+
+      if (!statToUpgrade) {
+        continue; // Нет доступных улучшений для этой ветки
+      }
+
+      // Проверяем ограничения (например, некоторые статы требуют уровень замка >= 2)
+      const cost = (player.upgrades[statToUpgrade] + 1) * 150;
+      if (player.gold < cost) {
+        continue;
+      }
+
+      // Проверяем ограничения по уровню замка
+      if (
+        (statToUpgrade === "defense" ||
+          statToUpgrade === "health" ||
+          statToUpgrade === "goldIncome" ||
+          statToUpgrade === "buildingHealth" ||
+          statToUpgrade === "buildingAttack") &&
+        player.upgrades[statToUpgrade] >= 2 &&
+        player.castle.level < 2
+      ) {
+        continue;
+      }
+
+      // Применяем улучшение
       const action: GameAction = {
         type: "upgradeCastleStat",
         playerId,
         timestamp: Date.now(),
-        actionId: `autoUpgrade-goldIncome-${playerId}-${Date.now()}-${Math.random()}`,
-        data: { stat: "goldIncome" },
+        actionId: `autoUpgrade-${branch}-${statToUpgrade}-${playerId}-${Date.now()}-${Math.random()}`,
+        data: { stat: statToUpgrade },
       };
 
       const updated = handleGameAction(newState, action, playerId);
