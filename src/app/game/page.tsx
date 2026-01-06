@@ -50,7 +50,8 @@ function GamePageContent() {
 
   // В оффлайн-режиме используем локальное состояние и игровой цикл,
   // в сетевом режиме — только состояние, приходящее с сервера.
-  const localGame = !isNetworkMode ? useGameState() : null;
+  // ВАЖНО: хуки должны вызываться всегда, не условно
+  const localGame = useGameState();
 
   const networkGame = isNetworkMode
     ? useNetworkGameState(
@@ -143,8 +144,9 @@ function GamePageContent() {
           router.push("/game/lobby");
         },
       }
-    : (localGame as ReturnType<typeof useGameState>);
+    : localGame; // В оффлайн-режиме localGame всегда определён (хук вызывается всегда)
 
+  // Fallback для случаев, когда gameActions может быть null
   const {
     buyUnit,
     upgradeBuilding,
@@ -156,7 +158,18 @@ function GamePageContent() {
     selectPlayer,
     selectBuilding,
     restartGame,
-  } = gameActions;
+  } = gameActions ?? {
+    buyUnit: () => {},
+    upgradeBuilding: () => {},
+    repairBuilding: () => {},
+    upgradeCastleStat: () => {},
+    togglePause: () => {},
+    toggleAutoUpgrade: () => {},
+    setGameSpeed: () => {},
+    selectPlayer: () => {},
+    selectBuilding: () => {},
+    restartGame: () => {},
+  };
 
   // Инициализируем selectedPlayer в сетевом режиме на основе myPlayerId (только один раз)
   const selectedPlayerInitialized = React.useRef(false);
