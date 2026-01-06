@@ -13,6 +13,7 @@ interface BuildingModalProps {
   onUpgrade: () => void;
   onRepair: () => void;
   onBuyUnit?: (unitType: UnitType) => void;
+  onUpgradeCastleStat?: (stat: keyof import("@/types/game").CastleUpgrades) => void;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
   onUpgrade,
   onRepair,
   onBuyUnit,
+  onUpgradeCastleStat,
   onClose,
 }) => {
   const healthPercent = (building.health / building.maxHealth) * 100;
@@ -163,6 +165,57 @@ export const BuildingModal: React.FC<BuildingModalProps> = ({
                       width: `${((300000 - building.repairCooldown) / 300000) * 100}%`,
                     }}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* Прокачка статов замка */}
+            {building.type === "castle" && onUpgradeCastleStat && (
+              <div className="border-t border-gray-700 pt-3 mt-3">
+                <h4 className="text-sm font-semibold text-gray-300 mb-2">Прокачка статов</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { key: "attack" as const, label: "⚔️ Атака", icon: "⚔️" },
+                    { key: "defense" as const, label: "🛡️ Защита", icon: "🛡️" },
+                    { key: "health" as const, label: "❤️ Здоровье", icon: "❤️" },
+                    { key: "goldIncome" as const, label: "💰 Доход", icon: "💰" },
+                    { key: "buildingHealth" as const, label: "🏛️ Зд. зданий", icon: "🏛️" },
+                    { key: "buildingAttack" as const, label: "🗼 Ат. зданий", icon: "🗼" },
+                  ].map((stat) => {
+                    const currentLevel = player.upgrades[stat.key];
+                    const cost = (currentLevel + 1) * 150;
+                    const canUpgradeStat = 
+                      player.gold >= cost &&
+                      !(stat.key === "defense" && currentLevel >= 2 && player.castle.level < 2) &&
+                      !(stat.key === "health" && currentLevel >= 2 && player.castle.level < 2) &&
+                      !(stat.key === "goldIncome" && currentLevel >= 2 && player.castle.level < 2) &&
+                      !(stat.key === "buildingHealth" && currentLevel >= 2 && player.castle.level < 2) &&
+                      !(stat.key === "buildingAttack" && currentLevel >= 2 && player.castle.level < 2);
+                    
+                    return (
+                      <button
+                        key={stat.key}
+                        onClick={() => onUpgradeCastleStat(stat.key)}
+                        disabled={!canUpgradeStat}
+                        className={cn(
+                          "flex flex-col items-center justify-center p-2 rounded text-xs touch-manipulation min-h-[60px] transition-all",
+                          canUpgradeStat
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : "bg-gray-700 text-gray-400 cursor-not-allowed"
+                        )}>
+                        <span className="text-base mb-1">{stat.icon}</span>
+                        <span className="font-medium text-[10px] leading-tight text-center mb-0.5">
+                          {stat.label.replace(/[^\w\s]/g, "").trim()}
+                        </span>
+                        <span className="text-[9px] text-yellow-300 font-semibold">
+                          Lv.{currentLevel}
+                        </span>
+                        <span className="text-[9px] text-yellow-400 mt-0.5">
+                          {cost}🪙
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}

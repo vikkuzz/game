@@ -376,6 +376,13 @@ function GamePageContent() {
                 }
               : undefined
           }
+          onUpgradeCastleStat={
+            modalBuilding.type === "castle"
+              ? (stat) => {
+                  upgradeCastleStat(selectedPlayer, stat);
+                }
+              : undefined
+          }
           onClose={() => {
             setModalBuilding(null);
             selectBuilding(null);
