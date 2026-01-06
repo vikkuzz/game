@@ -6,6 +6,7 @@
 import type { Unit, Building, Position } from "@/types/game";
 import { getDistance, getNextTarget } from "../gameLogic";
 import { findNearestEnemy, findNearestEnemyBuilding } from "./unitTargeting";
+import { COMBAT_CONSTANTS } from "./constants";
 
 interface ProcessUnitMovementParams {
   unit: Unit;
@@ -29,9 +30,33 @@ export function processUnitMovement({
     return unit;
   }
 
-  // Если юнит атакует, не двигаем его (стоит на месте во время боя)
+  // Если юнит атакует, проверяем, есть ли враг в дистанции атаки
+  // Если враг вне дистанции или прошло время анимации атаки, разрешаем движение
   if (unit.isAttacking || unit.attackTarget) {
-    return { ...unit, isMoving: false };
+    // Проверяем, есть ли враг в дистанции атаки
+    const nearestEnemy = findNearestEnemy(unit, allUnits);
+    if (nearestEnemy) {
+      const distanceToEnemy = getDistance(unit.position, nearestEnemy.position);
+      const effectiveRange = unit.attackRange > COMBAT_CONSTANTS.RANGED_THRESHOLD 
+        ? unit.attackRange 
+        : COMBAT_CONSTANTS.MELEE_DISTANCE;
+      
+      // Если враг в дистанции атаки и прошло меньше времени анимации атаки, не двигаемся
+      if (distanceToEnemy <= effectiveRange) {
+        const timeSinceAttack = now - (unit.lastAttackTime || 0);
+        if (timeSinceAttack < COMBAT_CONSTANTS.ATTACK_ANIMATION_DURATION) {
+          return { ...unit, isMoving: false };
+        }
+      }
+    }
+    
+    // Если враг вне дистанции или прошло время анимации, сбрасываем флаги атаки и разрешаем движение
+    return { 
+      ...unit, 
+      isAttacking: false, 
+      attackTarget: undefined,
+      isMoving: true 
+    };
   }
 
   let updatedUnit = { ...unit };
