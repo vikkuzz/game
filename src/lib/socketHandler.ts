@@ -11,6 +11,10 @@ import { startGameLoop, stopGameLoop } from "./gameLoop";
 import type { Lobby, GameMode } from "@/types/lobby";
 import type { PlayerId } from "@/types/game";
 
+// Защита от множественных запросов переподключения
+const reconnectThrottle: Map<string, number> = new Map();
+const RECONNECT_THROTTLE_MS = 1000; // 1 секунда между запросами переподключения
+
 export default function socketHandler(io: SocketIOServer) {
   // Устанавливаем Socket.IO в lobbyManager
   lobbyManager.setIO(io);
@@ -267,6 +271,29 @@ export default function socketHandler(io: SocketIOServer) {
     // Обработка переподключения игрока к игре
     socket.on("game:reconnect", (data: { roomId: string; previousSocketId?: string; playerId?: PlayerId }) => {
       try {
+        // Защита от множественных запросов переподключения
+        const throttleKey = `${data.roomId}:${socket.id}`;
+        const lastReconnect = reconnectThrottle.get(throttleKey);
+        const now = Date.now();
+        
+        if (lastReconnect && (now - lastReconnect) < RECONNECT_THROTTLE_MS) {
+          console.log(`[SocketHandler] Reconnection throttled for ${socket.id} in room ${data.roomId} (last reconnect: ${now - lastReconnect}ms ago)`);
+          // Отправляем состояние игры даже при троттлинге, чтобы клиент не ждал
+          const room = gameServer.getGame(data.roomId);
+          if (room) {
+            const aiSlots = Array.from(room.aiSlots);
+            const playerSlotMap = Object.fromEntries(room.playerSlotMap);
+            socket.emit("game:state", {
+              gameState: room.gameState,
+              aiSlots: aiSlots,
+              playerSlotMap: playerSlotMap,
+            });
+          }
+          return;
+        }
+        
+        reconnectThrottle.set(throttleKey, now);
+        
         console.log(`[SocketHandler] Reconnection attempt - roomId: ${data.roomId}, previousSocketId: ${data.previousSocketId}, playerId: ${data.playerId}, newSocketId: ${socket.id}`);
         
         const room = gameServer.getGame(data.roomId);
@@ -337,6 +364,13 @@ export default function socketHandler(io: SocketIOServer) {
     // Отключение клиента
     socket.on("disconnect", () => {
       console.log(`Client disconnected: ${socket.id}`);
+      
+      // Очищаем throttle для этого сокета
+      for (const [key, _] of reconnectThrottle.entries()) {
+        if (key.endsWith(`:${socket.id}`)) {
+          reconnectThrottle.delete(key);
+        }
+      }
       
       // Находим все игры, где был игрок, и удаляем его
       // Останавливаем синхронизацию, если игра пуста

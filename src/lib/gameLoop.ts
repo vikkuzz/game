@@ -41,58 +41,70 @@ export function startGameLoop(io: SocketIOServer, roomId: string): void {
   let lastUpdate = Date.now();
 
   const timer = setInterval(() => {
-    const room = gameServer.getGame(roomId);
-    if (!room) {
-      // Комната не существует, останавливаем цикл
+    try {
+      const room = gameServer.getGame(roomId);
+      if (!room) {
+        // Комната не существует, останавливаем цикл
+        stopGameLoop(roomId);
+        return;
+      }
+
+      const now = Date.now();
+      const deltaTime = (now - lastUpdate) * room.gameState.gameSpeed;
+      lastUpdate = now;
+
+      // Пропускаем обновление, если игра на паузе
+      if (room.gameState.isPaused) {
+        return;
+      }
+
+      // Обновляем состояние игры
+      let newGameState: GameState = room.gameState;
+
+      try {
+        // 1) Пассивный доход золота (инком)
+        newGameState = applyGoldIncomeTick(room, deltaTime);
+        // 2) Автоматический спавн юнитов из бараков
+        newGameState = applySpawnTick(newGameState);
+        // 3) Кулдауны ремонта зданий
+        room.gameState = newGameState;
+        newGameState = applyCooldownTick(room, deltaTime);
+        // 4) Восстановление доступных юнитов в бараках
+        room.gameState = newGameState;
+        newGameState = applyUnitRestoreTick(room, deltaTime);
+        // 5) Авторазвитие (простая версия на сервере)
+        room.gameState = newGameState;
+        newGameState = applyAutoUpgradeTick(room, deltaTime);
+        // 6) ИИ для слотов из aiSlots
+        room.gameState = newGameState;
+        newGameState = applyAiTick(room, deltaTime);
+        // 7) Движение юнитов
+        room.gameState = newGameState;
+        newGameState = applyUnitMovementTick(room, deltaTime);
+        // 8) Бой (атаки между юнитами, атаки зданий по юнитам, атаки юнитов по зданиям)
+        room.gameState = newGameState;
+        newGameState = applyCombatTick(room, deltaTime);
+
+        // 9) Обновляем игровое время (для отображения, в секундах)
+        newGameState = {
+          ...newGameState,
+          gameTime: newGameState.gameTime + deltaTime / 1000,
+        };
+
+        // Обновляем состояние на сервере
+        gameServer.updateGameState(roomId, newGameState);
+      } catch (error) {
+        console.error(`[GameLoop] Error in game loop for room ${roomId}:`, error);
+        // Продолжаем работу, не останавливая цикл
+        // Это предотвращает падение сервера при ошибках в игровой логике
+      }
+
+      // Синхронизация будет отправлена через gameSync
+    } catch (error) {
+      console.error(`[GameLoop] Critical error in game loop for room ${roomId}:`, error);
+      // В критической ошибке останавливаем цикл
       stopGameLoop(roomId);
-      return;
     }
-
-    const now = Date.now();
-    const deltaTime = (now - lastUpdate) * room.gameState.gameSpeed;
-    lastUpdate = now;
-
-    // Пропускаем обновление, если игра на паузе
-    if (room.gameState.isPaused) {
-      return;
-    }
-
-    // Обновляем состояние игры
-    let newGameState: GameState = room.gameState;
-
-    // 1) Пассивный доход золота (инком)
-    newGameState = applyGoldIncomeTick(room, deltaTime);
-    // 2) Автоматический спавн юнитов из бараков
-    newGameState = applySpawnTick(newGameState);
-    // 3) Кулдауны ремонта зданий
-    room.gameState = newGameState;
-    newGameState = applyCooldownTick(room, deltaTime);
-    // 4) Восстановление доступных юнитов в бараках
-    room.gameState = newGameState;
-    newGameState = applyUnitRestoreTick(room, deltaTime);
-    // 5) Авторазвитие (простая версия на сервере)
-    room.gameState = newGameState;
-    newGameState = applyAutoUpgradeTick(room, deltaTime);
-    // 6) ИИ для слотов из aiSlots
-    room.gameState = newGameState;
-    newGameState = applyAiTick(room, deltaTime);
-    // 7) Движение юнитов
-    room.gameState = newGameState;
-    newGameState = applyUnitMovementTick(room, deltaTime);
-    // 8) Бой (атаки между юнитами, атаки зданий по юнитам, атаки юнитов по зданиям)
-    room.gameState = newGameState;
-    newGameState = applyCombatTick(room, deltaTime);
-
-    // 9) Обновляем игровое время (для отображения, в секундах)
-    newGameState = {
-      ...newGameState,
-      gameTime: newGameState.gameTime + deltaTime / 1000,
-    };
-
-    // Обновляем состояние на сервере
-    gameServer.updateGameState(roomId, newGameState);
-
-    // Синхронизация будет отправлена через gameSync
   }, GAME_LOOP_INTERVAL);
 
   gameLoopTimers.set(roomId, timer);
