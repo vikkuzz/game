@@ -273,6 +273,7 @@ function GamePageContent() {
     if (!gameState) return;
     
     // Находим здание
+    const selectedPlayer = gameState.selectedPlayer ?? 0;
     const player = gameState.players[selectedPlayer];
     if (!player) return;
     
@@ -293,27 +294,8 @@ function GamePageContent() {
     }
   };
 
-  // Если состояние еще не загружено, показываем загрузку
-  if (!gameState) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-white text-xl mb-4">Загрузка игры...</div>
-          <div className="flex items-center gap-2 justify-center">
-            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-green-400 text-sm">
-              {isNetworkMode ? "Подключение к серверу" : "Инициализация игры"}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const selectedPlayer = gameState.selectedPlayer ?? 0;
-  const currentPlayer = gameState.players[selectedPlayer];
-
   // Обновляем модальное окно при изменении gameState
+  // ВАЖНО: этот хук должен быть ПЕРЕД ранним возвратом, чтобы всегда вызываться
   useEffect(() => {
     if (!gameState || !modalBuilding) return;
     
@@ -351,6 +333,27 @@ function GamePageContent() {
       clearTimeout(timeoutId);
     };
   }, [gameState, modalBuilding]);
+
+  // Если состояние еще не загружено, показываем загрузку
+  // ВАЖНО: ранний возврат должен быть ПОСЛЕ всех хуков
+  if (!gameState) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-white text-xl mb-4">Загрузка игры...</div>
+          <div className="flex items-center gap-2 justify-center">
+            <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-green-400 text-sm">
+              {isNetworkMode ? "Подключение к серверу" : "Инициализация игры"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const selectedPlayer = gameState.selectedPlayer ?? 0;
+  const currentPlayer = gameState.players[selectedPlayer];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col md:block">
