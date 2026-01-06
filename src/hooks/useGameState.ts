@@ -65,6 +65,12 @@ export function useGameState() {
       return;
     }
 
+    // Проверка сетевого режима - в сетевом режиме движение обрабатывается на сервере
+    const isNetworkMode =
+      typeof window !== "undefined" &&
+      sessionStorage.getItem("networkGameData") !== null;
+    if (isNetworkMode) return;
+
     const gameLoop = () => {
       const now = Date.now();
       const deltaTime = (now - lastUpdateRef.current) * gameState.gameSpeed;
@@ -122,17 +128,23 @@ export function useGameState() {
           };
         });
 
-        // Сохраняем исходные юниты ДО обновления движения для проверки дистанции атаки
-        const originalUnitsList = prev.players
-          .flatMap((p) => p.units)
-          .filter((u) => u.health > 0);
+        // Проверка сетевого режима - в сетевом режиме бой обрабатывается на сервере
+        const isNetworkMode =
+          typeof window !== "undefined" &&
+          sessionStorage.getItem("networkGameData") !== null;
+        
+        if (!isNetworkMode) {
+          // Сохраняем исходные юниты ДО обновления движения для проверки дистанции атаки
+          const originalUnitsList = prev.players
+            .flatMap((p) => p.units)
+            .filter((u) => u.health > 0);
 
-        // Получаем обновленные юниты после движения
-        const allUnitsList = newState.players
-          .flatMap((p) => p.units)
-          .filter((u) => u.health > 0);
+          // Получаем обновленные юниты после движения
+          const allUnitsList = newState.players
+            .flatMap((p) => p.units)
+            .filter((u) => u.health > 0);
 
-        // Обрабатываем атаки между юнитами
+          // Обрабатываем атаки между юнитами
         const combatResult = processUnitCombat(
           allUnitsList,
           originalUnitsList,
@@ -300,6 +312,7 @@ export function useGameState() {
             };
           });
         }
+        } // Конец проверки сетевого режима для боя
 
         // Обновление времени игры
         newState.gameTime += deltaTime / 1000;
@@ -506,11 +519,17 @@ export function useGameState() {
         players: prev.players.map((player) => {
           const updateBuilding = (building: BuildingType) => {
             let updated = { ...building };
-            // Убран upgradeCooldown - больше не нужен
             if (updated.repairCooldown && updated.repairCooldown > 0) {
               updated.repairCooldown = Math.max(
                 0,
                 updated.repairCooldown - GAME_CONFIG.gameLoopInterval
+              );
+            }
+            // Обновляем кулдаун улучшения зданий
+            if (updated.upgradeCooldown && updated.upgradeCooldown > 0) {
+              updated.upgradeCooldown = Math.max(
+                0,
+                updated.upgradeCooldown - GAME_CONFIG.gameLoopInterval
               );
             }
             return updated;

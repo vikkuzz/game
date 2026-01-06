@@ -131,25 +131,51 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             {/* Действия с зданием */}
             <div className="flex flex-col gap-2 mt-4">
               {/* Улучшение */}
-              <Button
-                onClick={() =>
-                  onUpgradeBuilding(selectedPlayer, selectedBuilding.id)
-                }
-                disabled={
-                  player.gold < selectedBuilding.level * 200 ||
-                  !!(
-                    selectedBuilding.upgradeCooldown &&
-                    selectedBuilding.upgradeCooldown > 0
-                  ) ||
-                  // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
-                  (selectedBuilding.type === "barracks" &&
-                    selectedBuilding.level >= 2 &&
-                    player.castle.level < 2)
-                }
-                variant="primary"
-                size="sm">
-                Улучшить ({selectedBuilding.level * 200} золота)
-              </Button>
+              <div className="space-y-1">
+                <Button
+                  onClick={() =>
+                    onUpgradeBuilding(selectedPlayer, selectedBuilding.id)
+                  }
+                  disabled={
+                    player.gold < selectedBuilding.level * 200 ||
+                    !!(
+                      selectedBuilding.upgradeCooldown &&
+                      selectedBuilding.upgradeCooldown > 0
+                    ) ||
+                    // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
+                    (selectedBuilding.type === "barracks" &&
+                      selectedBuilding.level >= 2 &&
+                      player.castle.level < 2)
+                  }
+                  variant="primary"
+                  size="sm"
+                  className="w-full">
+                  Улучшить ({selectedBuilding.level * 200} золота)
+                </Button>
+                {selectedBuilding.upgradeCooldown &&
+                  selectedBuilding.upgradeCooldown > 0 && (
+                    <div className="w-full">
+                      <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Кулдаун улучшения:</span>
+                        <span>
+                          {Math.ceil(selectedBuilding.upgradeCooldown / 1000)}с
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div
+                          className="bg-orange-600 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${
+                              ((5000 - selectedBuilding.upgradeCooldown) /
+                                5000) *
+                              100
+                            }%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+              </div>
 
               {/* Починка */}
               <div className="space-y-1">
