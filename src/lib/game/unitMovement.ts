@@ -29,6 +29,11 @@ export function processUnitMovement({
     return unit;
   }
 
+  // Если юнит атакует, не двигаем его (стоит на месте во время боя)
+  if (unit.isAttacking || unit.attackTarget) {
+    return { ...unit, isMoving: false };
+  }
+
   let updatedUnit = { ...unit };
 
   // 1) Определяем цель-преследование (стикнуть к врагу, пока кто-то не погибнет)
