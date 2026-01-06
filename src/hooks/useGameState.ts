@@ -108,16 +108,20 @@ export function useGameState() {
           });
 
           // Применяем отталкивание юнитов друг от друга
-          // Используем все юниты из prev, но заменяем юниты текущего игрока на обновленные
-          const allUnitsForSeparation = [
-            ...prev.players
-              .filter((p) => p.id !== player.id)
-              .flatMap((p) => p.units),
-            ...updatedUnits,
-          ];
-          updatedUnits = updatedUnits.map((unit) => {
-            return separateUnits(unit, allUnitsForSeparation, deltaTime);
-          });
+          // Применяем несколько итераций для более эффективного разделения
+          const SEPARATION_ITERATIONS = 3;
+          for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
+            // Используем все юниты из prev, но заменяем юниты текущего игрока на обновленные
+            const allUnitsForSeparation = [
+              ...prev.players
+                .filter((p) => p.id !== player.id)
+                .flatMap((p) => p.units),
+              ...updatedUnits,
+            ];
+            updatedUnits = updatedUnits.map((unit) => {
+              return separateUnits(unit, allUnitsForSeparation, deltaTime / SEPARATION_ITERATIONS);
+            });
+          }
 
           // Удаляем мертвых юнитов
           updatedUnits = updatedUnits.filter((u) => u.health > 0);

@@ -49,15 +49,28 @@ export function applyUnitMovementTick(
       });
 
       // Применяем отталкивание юнитов друг от друга
+      // Применяем несколько итераций для более эффективного разделения
       const allUnitsForSeparation = [
         ...state.players
           .filter((p) => p.id !== player.id)
           .flatMap((p) => p.units),
         ...updatedUnits,
       ];
-      updatedUnits = updatedUnits.map((unit) => {
-        return separateUnits(unit, allUnitsForSeparation, deltaTime);
-      });
+      
+      // Применяем отталкивание несколько раз для лучшего результата
+      const SEPARATION_ITERATIONS = 3;
+      for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
+        updatedUnits = updatedUnits.map((unit) => {
+          // Обновляем список всех юнитов для каждой итерации
+          const currentAllUnits = [
+            ...state.players
+              .filter((p) => p.id !== player.id)
+              .flatMap((p) => p.units),
+            ...updatedUnits,
+          ];
+          return separateUnits(unit, currentAllUnits, deltaTime / SEPARATION_ITERATIONS);
+        });
+      }
 
       // Удаляем мертвых юнитов
       updatedUnits = updatedUnits.filter((u) => u.health > 0);

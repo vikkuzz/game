@@ -79,8 +79,9 @@ export function processUnitMovement({
   } else if (unit.targetPosition) {
     // Движемся к целевой позиции
     const distanceToTarget = getDistance(unit.position, unit.targetPosition);
+    const REACHED_DISTANCE = 10; // Увеличиваем порог достижения цели
 
-    if (distanceToTarget > 5) {
+    if (distanceToTarget > REACHED_DISTANCE) {
       // Еще не достигли цели
       updatedUnit.isMoving = true;
 
@@ -110,9 +111,15 @@ export function processUnitMovement({
         } else if (unit.finalTarget) {
           // Переходим к финальной цели
           updatedUnit.targetPosition = unit.finalTarget;
+          updatedUnit.finalTarget = undefined; // Очищаем финальную цель после перехода
+          updatedUnit.intermediateTargets = undefined; // Очищаем промежуточные цели
+          updatedUnit.currentIntermediateIndex = undefined;
           updatedUnit.isMoving = true;
         } else {
           // Нет больше целей, ищем новую
+          updatedUnit.intermediateTargets = undefined;
+          updatedUnit.currentIntermediateIndex = undefined;
+          updatedUnit.finalTarget = undefined;
           const newTarget = getNextTarget(
             unit.playerId,
             unit.position,
@@ -126,9 +133,11 @@ export function processUnitMovement({
       } else if (unit.finalTarget) {
         // Достигли промежуточной цели, переходим к финальной
         updatedUnit.targetPosition = unit.finalTarget;
+        updatedUnit.finalTarget = undefined; // Очищаем финальную цель после перехода
         updatedUnit.isMoving = true;
       } else {
         // Нет больше целей, ищем новую
+        // Проверяем, не застрял ли юнит на месте (если он уже достиг этой цели ранее)
         const newTarget = getNextTarget(
           unit.playerId,
           unit.position,
@@ -136,7 +145,36 @@ export function processUnitMovement({
           800, // mapSize
           unit.barrackIndex
         );
-        updatedUnit.targetPosition = newTarget;
+        
+        // Если новая цель слишком близко к текущей позиции (меньше 20px), 
+        // значит юнит застрял, ищем более отдаленную цель
+        const distanceToNewTarget = getDistance(unit.position, newTarget);
+        if (distanceToNewTarget < 20) {
+          // Ищем ближайшее вражеское здание
+          if (allEnemyBuildings.length > 0) {
+            let nearest: Building | null = null;
+            let minDistance = Infinity;
+            for (const building of allEnemyBuildings) {
+              if (building.health <= 0) continue;
+              const distance = getDistance(unit.position, building.position);
+              if (distance < minDistance && distance > 30) { // Минимум 30px от текущей позиции
+                minDistance = distance;
+                nearest = building;
+              }
+            }
+            if (nearest) {
+              updatedUnit.targetPosition = nearest.position;
+            } else {
+              // Если нет подходящих зданий, идем в центр карты
+              updatedUnit.targetPosition = { x: 400, y: 400 };
+            }
+          } else {
+            // Нет вражеских зданий, идем в центр
+            updatedUnit.targetPosition = { x: 400, y: 400 };
+          }
+        } else {
+          updatedUnit.targetPosition = newTarget;
+        }
         updatedUnit.isMoving = true;
       }
     }

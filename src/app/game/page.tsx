@@ -8,9 +8,10 @@ import { useSocket } from "@/hooks/useSocket";
 import { GameMap } from "@/components/game/GameMap";
 import { ControlPanel } from "@/components/game/ControlPanel";
 import { GameOverModal } from "@/components/game/GameOverModal";
+import { BuildingModal } from "@/components/game/BuildingModal";
 import { Button } from "@/components/Button";
 import { Section } from "@/components/Section";
-import { UnitType, PlayerId } from "@/types/game";
+import { UnitType, PlayerId, Building } from "@/types/game";
 import { MobileControlPanel } from "@/components/game/MobileControlPanel";
 
 /**
@@ -27,6 +28,7 @@ function GamePageContent() {
   } | null>(null);
   const [isNetworkMode, setIsNetworkMode] = useState(false);
   const [lobbyId, setLobbyId] = useState<string | null>(null);
+  const [modalBuilding, setModalBuilding] = useState<Building | null>(null);
 
   // Загружаем данные сетевой игры из sessionStorage при загрузке страницы
   // Это позволяет автоматически переподключаться при обновлении страницы
@@ -226,9 +228,24 @@ function GamePageContent() {
 
   const handleBuildingClick = (buildingId: string) => {
     if (!gameState) return;
-    if (gameState.selectedBuilding === buildingId) {
-      selectBuilding(null);
+    
+    // Находим здание
+    const player = gameState.players[selectedPlayer];
+    if (!player) return;
+    
+    let building: Building | null = null;
+    if (player.castle.id === buildingId) {
+      building = player.castle;
     } else {
+      building = [...player.barracks, ...player.towers].find(
+        (b) => b.id === buildingId
+      ) || null;
+    }
+    
+    if (building) {
+      // Открываем модальное окно вместо выбора здания
+      setModalBuilding(building);
+      // Также выбираем здание для обратной совместимости
       selectBuilding(buildingId);
     }
   };
@@ -250,8 +267,56 @@ function GamePageContent() {
     );
   }
 
+  const selectedPlayer = gameState.selectedPlayer ?? 0;
+  const currentPlayer = gameState.players[selectedPlayer];
+
+  // Обновляем модальное окно при изменении gameState
+  useEffect(() => {
+    if (modalBuilding && currentPlayer) {
+      let updatedBuilding: Building | null = null;
+      if (currentPlayer.castle.id === modalBuilding.id) {
+        updatedBuilding = currentPlayer.castle;
+      } else {
+        updatedBuilding = [...currentPlayer.barracks, ...currentPlayer.towers].find(
+          (b) => b.id === modalBuilding.id
+        ) || null;
+      }
+      if (updatedBuilding) {
+        setModalBuilding(updatedBuilding);
+      } else {
+        // Здание было уничтожено, закрываем модальное окно
+        setModalBuilding(null);
+      }
+    }
+  }, [gameState, modalBuilding, currentPlayer]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col md:block">
+      {/* Модальное окно управления зданием */}
+      {modalBuilding && currentPlayer && (
+        <BuildingModal
+          building={modalBuilding}
+          player={currentPlayer}
+          playerId={selectedPlayer}
+          onUpgrade={() => {
+            upgradeBuilding(selectedPlayer, modalBuilding.id);
+          }}
+          onRepair={() => {
+            repairBuilding(selectedPlayer, modalBuilding.id);
+          }}
+          onBuyUnit={
+            modalBuilding.type === "barracks"
+              ? (unitType) => {
+                  buyUnit(selectedPlayer, modalBuilding.id, unitType);
+                }
+              : undefined
+          }
+          onClose={() => {
+            setModalBuilding(null);
+            selectBuilding(null);
+          }}
+        />
+      )}
       {/* Мобильный layout - карта на весь экран */}
       <div className="md:hidden flex flex-col h-screen">
         {/* Компактный заголовок с управлением */}

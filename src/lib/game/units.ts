@@ -101,6 +101,7 @@ export function damageUnit(unit: Unit, damage: number): Unit {
  */
 const UNIT_RADIUS = 12; // Радиус юнита (диаметр 24px)
 const MIN_DISTANCE = UNIT_RADIUS * 2 + 2; // Минимальное расстояние между юнитами
+const SEPARATION_SPEED = 80; // Скорость отталкивания (пикселей в секунду)
 
 export function separateUnits(
   unit: Unit,
@@ -115,14 +116,28 @@ export function separateUnits(
     if (other.id === unit.id) return;
 
     const distance = getDistance(unit.position, other.position);
-    if (distance < MIN_DISTANCE && distance > 0) {
+    if (distance < MIN_DISTANCE) {
       // Вычисляем вектор отталкивания
-      const dx = unit.position.x - other.position.x;
-      const dy = unit.position.y - other.position.y;
-      const normalizedDistance = Math.max(distance, 1); // Избегаем деления на ноль
+      let dx = unit.position.x - other.position.x;
+      let dy = unit.position.y - other.position.y;
+      
+      // Если юниты в одной точке (distance = 0), используем случайное направление
+      if (distance === 0 || (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1)) {
+        // Генерируем случайное направление на основе ID юнита для детерминированности
+        const hash = (unit.id.charCodeAt(0) + unit.id.charCodeAt(unit.id.length - 1)) % 360;
+        const angle = (hash * Math.PI) / 180;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+      }
+      
+      const normalizedDistance = Math.max(distance, 0.1); // Минимум 0.1 для избежания деления на ноль
 
       // Сила отталкивания зависит от близости (чем ближе, тем сильнее)
-      const separationForce = (MIN_DISTANCE - distance) / MIN_DISTANCE;
+      // Для distance = 0 используем максимальную силу
+      const separationForce = distance === 0 
+        ? 1.5 // Максимальная сила для юнитов в одной точке
+        : (MIN_DISTANCE - distance) / MIN_DISTANCE;
+      
       separationX += (dx / normalizedDistance) * separationForce;
       separationY += (dy / normalizedDistance) * separationForce;
       count++;
@@ -139,8 +154,8 @@ export function separateUnits(
       separationY /= length;
 
       // Применяем отталкивание (скорость зависит от deltaTime)
-      const separationSpeed = 50; // пикселей в секунду
-      const moveDistance = (separationSpeed * deltaTime) / 1000;
+      // Увеличиваем скорость для более быстрого разделения
+      const moveDistance = (SEPARATION_SPEED * deltaTime) / 1000;
 
       const newPosition = {
         x: unit.position.x + separationX * moveDistance,
