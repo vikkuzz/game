@@ -9,7 +9,7 @@ export const COMBAT_CONSTANTS = {
   BUILDING_ATTACK_INTERVAL: 1000, // 1 секунда между атаками зданий
   
   // Дистанции атаки
-  MELEE_DISTANCE: 35, // Дистанция ближнего боя (увеличена для компенсации отталкивания)
+  MELEE_DISTANCE: 20, // Дистанция ближнего боя
   RANGED_THRESHOLD: 80, // Порог для определения дальнобойного юнита (attackRange > 80)
   OPTIMAL_RANGE_MULTIPLIER: 0.6, // 60% от максимального радиуса для оптимальной дистанции
   

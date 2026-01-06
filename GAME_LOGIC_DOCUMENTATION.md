@@ -594,7 +594,8 @@ const deltaTime = (now - lastUpdateTime) * gameSpeed;
 
 ### Дистанции
 
-- `MELEE_DISTANCE`: 35px (дистанция ближнего боя)
+- `MELEE_DISTANCE`: 20px (дистанция ближнего боя)
+- `MIN_DISTANCE`: 10px (радиус отталкивания юнитов)
 - `RANGED_THRESHOLD`: 80px (порог для определения дальнобойного юнита)
 - `OPTIMAL_RANGE_MULTIPLIER`: 0.6 (60% от радиуса для оптимальной дистанции)
 - `BUILDING_TARGET_DISTANCE`: 50px (здание считается в позиции)
