@@ -76,27 +76,26 @@ function GamePageContent() {
   // ВАЖНО: хуки должны вызываться всегда, не условно
   const localGame = useGameState();
 
-  const networkGame = isNetworkMode
-    ? useNetworkGameState(
-        networkGameData && socket
-          ? {
-              lobbyId: networkGameData.lobby.id,
-              playerSlotMap: networkGameData.playerSlotMap,
-              socketId: socket.id || null,
-              socket,
-              isConnected,
-              aiSlots: networkGameData.aiSlots || [],
-            }
-          : {
-              lobbyId: "",
-              playerSlotMap: {},
-              socketId: null,
-              socket: null,
-              isConnected: false,
-              aiSlots: [],
-            }
-      )
-    : ({} as ReturnType<typeof useNetworkGameState>);
+  // Хук должен вызываться всегда, но с правильными параметрами
+  const networkGame = useNetworkGameState(
+    networkGameData && socket && isNetworkMode
+      ? {
+          lobbyId: networkGameData.lobby.id,
+          playerSlotMap: networkGameData.playerSlotMap,
+          socketId: socket.id || null,
+          socket,
+          isConnected,
+          aiSlots: networkGameData.aiSlots || [],
+        }
+      : {
+          lobbyId: "",
+          playerSlotMap: {},
+          socketId: null,
+          socket: null,
+          isConnected: false,
+          aiSlots: [],
+        }
+  );
 
   // Определяем myPlayerId для сетевого режима
   // Используем сохраненный playerId из sessionStorage, если networkGame.myPlayerId не определен
