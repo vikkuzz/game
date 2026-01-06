@@ -4,14 +4,98 @@
  */
 
 import { Unit, Building, Position } from "@/types/game";
-import { findNearestEnemy, findNearestEnemyBuilding, getDistance } from "../gameLogic";
+import { getDistance } from "./positions";
 import { COMBAT_CONSTANTS } from "./constants";
+
+// Константы для радиусов обнаружения
+const UNIT_DETECTION_RADIUS = 150;
+const BUILDING_DETECTION_RADIUS = 200;
+const DEFAULT_BUILDING_ATTACK_RANGE = 200;
 
 export interface TargetInfo {
   enemyUnit: Unit | null;
   enemyBuilding: Building | null;
   distanceToUnit: number;
   distanceToBuilding: number;
+}
+
+/**
+ * Поиск ближайшего вражеского юнита
+ */
+export function findNearestEnemy(unit: Unit, allUnits: Unit[]): Unit | null {
+  const enemies = allUnits.filter(
+    (u) => u.playerId !== unit.playerId && u.health > 0
+  );
+
+  if (enemies.length === 0) return null;
+
+  let nearest: Unit | null = null;
+  let minDistance = Infinity;
+
+  enemies.forEach((enemy) => {
+    const distance = getDistance(unit.position, enemy.position);
+    if (distance < minDistance && distance < UNIT_DETECTION_RADIUS) {
+      minDistance = distance;
+      nearest = enemy;
+    }
+  });
+
+  return nearest;
+}
+
+/**
+ * Поиск ближайшего вражеского здания
+ */
+export function findNearestEnemyBuilding(
+  unit: Unit,
+  allBuildings: Building[]
+): Building | null {
+  const enemyBuildings = allBuildings.filter(
+    (b) => b.playerId !== unit.playerId && b.health > 0
+  );
+
+  if (enemyBuildings.length === 0) return null;
+
+  let nearest: Building | null = null;
+  let minDistance = Infinity;
+
+  enemyBuildings.forEach((building) => {
+    const distance = getDistance(unit.position, building.position);
+    if (distance < minDistance && distance < BUILDING_DETECTION_RADIUS) {
+      minDistance = distance;
+      nearest = building;
+    }
+  });
+
+  return nearest;
+}
+
+/**
+ * Поиск ближайшего вражеского юнита для здания
+ */
+export function findNearestEnemyUnitForBuilding(
+  building: Building,
+  allUnits: Unit[]
+): Unit | null {
+  const enemyUnits = allUnits.filter(
+    (u) => u.playerId !== building.playerId && u.health > 0
+  );
+
+  if (enemyUnits.length === 0) return null;
+
+  let nearest: Unit | null = null;
+  let minDistance = Infinity;
+  const attackRange = building.attackRange || DEFAULT_BUILDING_ATTACK_RANGE;
+
+  enemyUnits.forEach((unit) => {
+    const distance = getDistance(building.position, unit.position);
+    if (distance < minDistance && distance <= attackRange) {
+      minDistance = distance;
+      nearest = unit;
+    }
+  });
+
+  return nearest;
 }
 
 /**
