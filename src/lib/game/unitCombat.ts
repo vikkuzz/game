@@ -38,9 +38,9 @@ export function canUnitAttack(unit: Unit, now: number): boolean {
  */
 export function getEffectiveAttackRange(unit: Unit): number {
   const isRanged = unit.attackRange > COMBAT_CONSTANTS.RANGED_THRESHOLD;
-  // Для ближнего боя используем attackRange юнита, но не меньше MELEE_DISTANCE
-  // Это позволяет воинам с attackRange=50 атаковать на этой дистанции
-  return isRanged ? unit.attackRange : Math.max(unit.attackRange, COMBAT_CONSTANTS.MELEE_DISTANCE);
+  // Для ближнего боя всегда используем MELEE_DISTANCE (20px)
+  // Для дальнобойных используем их attackRange
+  return isRanged ? unit.attackRange : COMBAT_CONSTANTS.MELEE_DISTANCE;
 }
 
 /**

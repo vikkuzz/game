@@ -30,36 +30,37 @@ export function processUnitMovement({
     return unit;
   }
 
-  // Если юнит атакует, проверяем, есть ли враг в дистанции атаки
-  // Если враг вне дистанции или прошло время анимации атаки, разрешаем движение
-  if (unit.isAttacking || unit.attackTarget) {
-    // Проверяем, есть ли враг в дистанции атаки
-    const nearestEnemy = findNearestEnemy(unit, allUnits);
-    if (nearestEnemy) {
-      const distanceToEnemy = getDistance(unit.position, nearestEnemy.position);
-      const effectiveRange = unit.attackRange > COMBAT_CONSTANTS.RANGED_THRESHOLD 
-        ? unit.attackRange 
-        : COMBAT_CONSTANTS.MELEE_DISTANCE;
-      
-      // Если враг в дистанции атаки и прошло меньше времени анимации атаки, не двигаемся
-      if (distanceToEnemy <= effectiveRange) {
-        const timeSinceAttack = now - (unit.lastAttackTime || 0);
-        if (timeSinceAttack < COMBAT_CONSTANTS.ATTACK_ANIMATION_DURATION) {
-          return { ...unit, isMoving: false };
+  // Сбрасываем флаги атаки, если прошло время анимации или враг вне дистанции
+  let updatedUnit = { ...unit };
+  if (updatedUnit.isAttacking || updatedUnit.attackTarget) {
+    const timeSinceAttack = now - (updatedUnit.lastAttackTime || 0);
+    const nearestEnemy = findNearestEnemy(updatedUnit, allUnits);
+    
+    // Если прошло время анимации атаки
+    if (timeSinceAttack >= COMBAT_CONSTANTS.ATTACK_ANIMATION_DURATION) {
+      if (nearestEnemy) {
+        const distanceToEnemy = getDistance(updatedUnit.position, nearestEnemy.position);
+        const effectiveRange = updatedUnit.attackRange > COMBAT_CONSTANTS.RANGED_THRESHOLD 
+          ? updatedUnit.attackRange 
+          : COMBAT_CONSTANTS.MELEE_DISTANCE;
+        
+        // Если враг вне дистанции атаки, сбрасываем флаги
+        if (distanceToEnemy > effectiveRange) {
+          updatedUnit.isAttacking = false;
+          updatedUnit.attackTarget = undefined;
         }
+      } else {
+        // Нет врага, сбрасываем флаги
+        updatedUnit.isAttacking = false;
+        updatedUnit.attackTarget = undefined;
       }
     }
     
-    // Если враг вне дистанции или прошло время анимации, сбрасываем флаги атаки и разрешаем движение
-    return { 
-      ...unit, 
-      isAttacking: false, 
-      attackTarget: undefined,
-      isMoving: true 
-    };
+    // Если флаги все еще установлены и прошло меньше времени анимации, блокируем движение
+    if ((updatedUnit.isAttacking || updatedUnit.attackTarget) && timeSinceAttack < COMBAT_CONSTANTS.ATTACK_ANIMATION_DURATION) {
+      return { ...updatedUnit, isMoving: false };
+    }
   }
-
-  let updatedUnit = { ...unit };
 
   // 1) Определяем цель-преследование (стикнуть к врагу, пока кто-то не погибнет)
   const ENGAGE_DISTANCE = Math.max(200, unit.attackRange * 3); // радиус начала преследования

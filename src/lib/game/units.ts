@@ -110,10 +110,8 @@ export function separateUnits(
   allUnits: Unit[],
   deltaTime: number
 ): Unit {
-  // Если юнит атакует, не применяем отталкивание (чтобы не было дрейфа во время боя)
-  if (unit.isAttacking || unit.attackTarget) {
-    return unit;
-  }
+  // Отталкивание применяется всегда, чтобы юниты не склеивались
+  // Не блокируем отталкивание для атакующих юнитов
 
   let separationX = 0;
   let separationY = 0;
@@ -122,10 +120,7 @@ export function separateUnits(
   allUnits.forEach((other) => {
     if (other.id === unit.id) return;
     
-    // Также не отталкиваем от атакующих юнитов
-    if (other.isAttacking || other.attackTarget) {
-      return;
-    }
+    // Отталкиваем от всех юнитов, независимо от их состояния
 
     const distance = getDistance(unit.position, other.position);
     if (distance < MIN_DISTANCE) {
