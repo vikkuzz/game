@@ -100,8 +100,8 @@ export function damageUnit(unit: Unit, damage: number): Unit {
  * Отталкивание юнитов друг от друга
  */
 const UNIT_RADIUS = 12; // Радиус юнита (диаметр 24px)
-const MIN_DISTANCE = UNIT_RADIUS * 2 + 2; // Минимальное расстояние между юнитами
-const SEPARATION_SPEED = 80; // Скорость отталкивания (пикселей в секунду)
+const MIN_DISTANCE = UNIT_RADIUS * 2 + 8; // Минимальное расстояние между юнитами (увеличено для лучшего разделения)
+const SEPARATION_SPEED = 150; // Скорость отталкивания (пикселей в секунду) - увеличено для более агрессивного разделения
 
 export function separateUnits(
   unit: Unit,
@@ -135,8 +135,8 @@ export function separateUnits(
       // Сила отталкивания зависит от близости (чем ближе, тем сильнее)
       // Для distance = 0 используем максимальную силу
       const separationForce = distance === 0 
-        ? 1.5 // Максимальная сила для юнитов в одной точке
-        : (MIN_DISTANCE - distance) / MIN_DISTANCE;
+        ? 2.5 // Максимальная сила для юнитов в одной точке (увеличено)
+        : Math.max(0.5, (MIN_DISTANCE - distance) / MIN_DISTANCE) * 1.5; // Увеличена базовая сила отталкивания
       
       separationX += (dx / normalizedDistance) * separationForce;
       separationY += (dy / normalizedDistance) * separationForce;
@@ -155,7 +155,11 @@ export function separateUnits(
 
       // Применяем отталкивание (скорость зависит от deltaTime)
       // Увеличиваем скорость для более быстрого разделения
-      const moveDistance = (SEPARATION_SPEED * deltaTime) / 1000;
+      // Умножаем на силу отталкивания для более агрессивного разделения при скоплении
+      const baseMoveDistance = (SEPARATION_SPEED * deltaTime) / 1000;
+      // Если много юнитов рядом (count > 2), увеличиваем силу отталкивания
+      const crowdMultiplier = count > 2 ? 1.5 : 1.0;
+      const moveDistance = baseMoveDistance * crowdMultiplier;
 
       const newPosition = {
         x: unit.position.x + separationX * moveDistance,

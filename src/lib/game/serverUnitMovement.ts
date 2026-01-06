@@ -35,7 +35,33 @@ export function applyUnitMovementTick(
       const allEnemyBuildings = getAllEnemyBuildings(player.id);
       const allCurrentUnits = state.players.flatMap((p) => p.units);
 
+      // Сначала применяем отталкивание, чтобы предотвратить скопление
+      // Это важно делать ДО движения, чтобы юниты не собирались в кучу
       let updatedUnits = player.units.map((unit) => {
+        if (unit.health <= 0) return unit;
+        return unit;
+      });
+
+      // Применяем отталкивание несколько раз для лучшего результата
+      // Используем полный deltaTime для каждой итерации, чтобы разделение было более эффективным
+      const SEPARATION_ITERATIONS = 5; // Увеличено количество итераций
+      for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
+        updatedUnits = updatedUnits.map((unit) => {
+          if (unit.health <= 0) return unit;
+          // Обновляем список всех юнитов для каждой итерации
+          const currentAllUnits = [
+            ...state.players
+              .filter((p) => p.id !== player.id)
+              .flatMap((p) => p.units),
+            ...updatedUnits,
+          ];
+          // Используем полный deltaTime для каждой итерации
+          return separateUnits(unit, currentAllUnits, deltaTime);
+        });
+      }
+
+      // Теперь применяем движение после разделения
+      updatedUnits = updatedUnits.map((unit) => {
         if (unit.health <= 0) return unit;
 
         // Используем модуль движения
@@ -47,30 +73,6 @@ export function applyUnitMovementTick(
           now,
         });
       });
-
-      // Применяем отталкивание юнитов друг от друга
-      // Применяем несколько итераций для более эффективного разделения
-      const allUnitsForSeparation = [
-        ...state.players
-          .filter((p) => p.id !== player.id)
-          .flatMap((p) => p.units),
-        ...updatedUnits,
-      ];
-      
-      // Применяем отталкивание несколько раз для лучшего результата
-      const SEPARATION_ITERATIONS = 3;
-      for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
-        updatedUnits = updatedUnits.map((unit) => {
-          // Обновляем список всех юнитов для каждой итерации
-          const currentAllUnits = [
-            ...state.players
-              .filter((p) => p.id !== player.id)
-              .flatMap((p) => p.units),
-            ...updatedUnits,
-          ];
-          return separateUnits(unit, currentAllUnits, deltaTime / SEPARATION_ITERATIONS);
-        });
-      }
 
       // Удаляем мертвых юнитов
       updatedUnits = updatedUnits.filter((u) => u.health > 0);
