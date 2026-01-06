@@ -43,8 +43,8 @@ export function applyUnitMovementTick(
       });
 
       // Применяем отталкивание несколько раз для лучшего результата
-      // Используем полный deltaTime для каждой итерации, чтобы разделение было более эффективным
-      const SEPARATION_ITERATIONS = 5; // Увеличено количество итераций
+      // Делаем меньший шаг на итерацию, чтобы эффект был мягче и без рывков
+      const SEPARATION_ITERATIONS = 4;
       for (let i = 0; i < SEPARATION_ITERATIONS; i++) {
         updatedUnits = updatedUnits.map((unit) => {
           if (unit.health <= 0) return unit;
@@ -55,8 +55,8 @@ export function applyUnitMovementTick(
               .flatMap((p) => p.units),
             ...updatedUnits,
           ];
-          // Используем полный deltaTime для каждой итерации
-          return separateUnits(unit, currentAllUnits, deltaTime);
+          // Используем deltaTime на итерацию
+          return separateUnits(unit, currentAllUnits, deltaTime / SEPARATION_ITERATIONS);
         });
       }
 
