@@ -21,20 +21,51 @@ function GamePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { socket, isConnected } = useSocket();
+  // Инициализируем состояние синхронно при первом рендере, чтобы избежать изменения порядка хуков
   const [networkGameData, setNetworkGameData] = useState<{
     lobby: any;
     playerSlotMap: Record<string, PlayerId>;
     aiSlots?: PlayerId[];
-  } | null>(null);
-  const [isNetworkMode, setIsNetworkMode] = useState(false);
-  const [lobbyId, setLobbyId] = useState<string | null>(null);
+  } | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = sessionStorage.getItem("networkGameData");
+      if (stored) {
+        const data = JSON.parse(stored);
+        return data;
+      }
+    } catch (error) {
+      console.error("Error parsing network game data on init:", error);
+    }
+    return null;
+  });
+  
+  const [isNetworkMode, setIsNetworkMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const stored = sessionStorage.getItem("networkGameData");
+    return stored !== null;
+  });
+  
+  const [lobbyId, setLobbyId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = sessionStorage.getItem("networkGameData");
+      if (stored) {
+        const data = JSON.parse(stored);
+        return data.lobby.id;
+      }
+    } catch (error) {
+      console.error("Error parsing network game data on init:", error);
+    }
+    return null;
+  });
+  
   const [modalBuilding, setModalBuilding] = useState<Building | null>(null);
   
   // Используем ref для отслеживания инициализации и предотвращения множественных обновлений
   const initializationRef = React.useRef(false);
 
-  // Загружаем данные сетевой игры из sessionStorage при загрузке страницы
-  // Это позволяет автоматически переподключаться при обновлении страницы
+  // Обновляем URL при необходимости (только для навигации, не для инициализации состояния)
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (initializationRef.current) return; // Предотвращаем повторную инициализацию
@@ -42,82 +73,36 @@ function GamePageContent() {
     let isMounted = true;
     let navigationTimeout: NodeJS.Timeout | null = null;
 
-    // Сначала проверяем URL параметры
+    // Проверяем URL параметры
     const urlNetworkMode = searchParams?.get("network") === "true";
     const urlLobbyId = searchParams?.get("lobbyId") || null;
 
-    // Затем проверяем sessionStorage для автоматического переподключения
-    const stored = sessionStorage.getItem("networkGameData");
-    
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        // Если есть сохраненные данные, используем их для переподключения
-        // Обновляем состояние одним батчем через React.startTransition
-        if (isMounted) {
-          React.startTransition(() => {
-            setNetworkGameData(data);
-            setIsNetworkMode(true);
-            setLobbyId(data.lobby.id);
-          });
-          initializationRef.current = true;
+    // Если есть данные в sessionStorage, но URL не совпадает - обновляем URL
+    if (networkGameData && (!urlNetworkMode || urlLobbyId !== networkGameData.lobby.id)) {
+      navigationTimeout = setTimeout(() => {
+        if (isMounted && typeof window !== "undefined") {
+          try {
+            router.replace(`/game?network=true&lobbyId=${networkGameData.lobby.id}`, { scroll: false });
+          } catch (error) {
+            console.error("Error navigating:", error);
+          }
         }
-        
-        // Обновляем URL, если он не совпадает (асинхронно, не блокируем рендер)
-        if (!urlNetworkMode || urlLobbyId !== data.lobby.id) {
-          // Используем requestAnimationFrame для асинхронного обновления URL после рендера
-          navigationTimeout = setTimeout(() => {
-            if (isMounted && typeof window !== "undefined") {
-              try {
-                router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
-              } catch (error) {
-                console.error("Error navigating:", error);
-              }
-            }
-          }, 100);
-        }
-        
-        console.log("[GamePage] Restored network game from sessionStorage:", data.lobby.id);
-      } catch (error) {
-        console.error("Error parsing network game data:", error);
-        // Если данные некорректны, очищаем и возвращаемся в лобби
-        sessionStorage.removeItem("networkGameData");
-        if (isMounted) {
-          navigationTimeout = setTimeout(() => {
-            if (isMounted && typeof window !== "undefined") {
-              try {
-                router.push("/game/lobby");
-              } catch (error) {
-                console.error("Error navigating to lobby:", error);
-              }
-            }
-          }, 100);
-        }
-      }
-    } else if (urlNetworkMode && urlLobbyId) {
+      }, 100);
+    } else if (!networkGameData && urlNetworkMode && urlLobbyId) {
       // Если нет сохраненных данных, но есть URL параметры - это новый вход
       // В этом случае нужно загрузить данные из лобби или вернуться туда
-      if (isMounted) {
-        navigationTimeout = setTimeout(() => {
-          if (isMounted && typeof window !== "undefined") {
-            try {
-              router.push("/game/lobby");
-            } catch (error) {
-              console.error("Error navigating to lobby:", error);
-            }
+      navigationTimeout = setTimeout(() => {
+        if (isMounted && typeof window !== "undefined") {
+          try {
+            router.push("/game/lobby");
+          } catch (error) {
+            console.error("Error navigating to lobby:", error);
           }
-        }, 100);
-      }
-    } else {
-      // Нет ни сохраненных данных, ни URL параметров - оффлайн режим
-      if (isMounted) {
-        React.startTransition(() => {
-          setIsNetworkMode(false);
-          setLobbyId(null);
-        });
-        initializationRef.current = true;
-      }
+        }
+      }, 100);
     }
+    
+    initializationRef.current = true;
 
     return () => {
       isMounted = false;
@@ -125,7 +110,7 @@ function GamePageContent() {
         clearTimeout(navigationTimeout);
       }
     };
-  }, [searchParams, router]);
+  }, [searchParams, router, networkGameData]);
 
   // В оффлайн-режиме используем локальное состояние и игровой цикл,
   // в сетевом режиме — только состояние, приходящее с сервера.
