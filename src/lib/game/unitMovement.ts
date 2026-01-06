@@ -31,10 +31,35 @@ export function processUnitMovement({
 
   let updatedUnit = { ...unit };
 
-  // Сначала проверяем, достигли ли мы текущей цели (промежуточной или финальной)
-  // Это приоритетнее, чем поиск врагов - нужно продолжать движение по маршруту
+  // 1) Определяем цель-преследование (стикнуть к врагу, пока кто-то не погибнет)
+  const ENGAGE_DISTANCE = Math.max(200, unit.attackRange * 3); // радиус начала преследования
+
+  // Если уже есть выбранная цель (по ID), пытаемся её поддерживать
+  let chaseEnemy: Unit | null = null;
+  if (updatedUnit.target) {
+    const existing = allUnits.find((u) => u.id === updatedUnit.target && u.health > 0) || null;
+    chaseEnemy = existing;
+    // Если текущая цель исчезла/умерла — сбрасываем
+    if (!existing) {
+      updatedUnit.target = undefined;
+    }
+  }
+
+  // Если нет активной цели, пробуем захватить ближайшего врага в радиусе вовлечения
+  if (!chaseEnemy) {
+    const nearestEnemyTry = findNearestEnemy(unit, allUnits);
+    if (nearestEnemyTry) {
+      const dist = getDistance(unit.position, nearestEnemyTry.position);
+      if (dist <= ENGAGE_DISTANCE) {
+        chaseEnemy = nearestEnemyTry;
+        updatedUnit.target = nearestEnemyTry.id; // запоминаем цель для «прилипания»
+      }
+    }
+  }
+
+  // 2) Если мы НЕ преследуем врага, то обслуживаем прогресс по маршруту (чекпоинты)
   let targetReached = false;
-  if (unit.targetPosition) {
+  if (!chaseEnemy && unit.targetPosition) {
     const distanceToTarget = getDistance(unit.position, unit.targetPosition);
     const REACHED_DISTANCE = 20; // Порог достижения цели (увеличен для надежности)
 
@@ -91,22 +116,27 @@ export function processUnitMovement({
   }
 
   // Теперь определяем, к чему двигаться
-  // Приоритет: текущая цель маршрута > враги > здания
+  // Приоритет: активная цель-враг (преследование) > ближайший враг > цель маршрута > вражеское здание > новая цель
   const nearestEnemy = findNearestEnemy(unit, allUnits);
   const nearestEnemyBuilding = findNearestEnemyBuilding(unit, allEnemyBuildings);
   
   // Определяем целевую позицию для движения
   let targetPosition: Position | null = null;
   
-  if (updatedUnit.targetPosition) {
-    // Есть цель маршрута - используем её (приоритет)
-    targetPosition = updatedUnit.targetPosition;
+  if (chaseEnemy) {
+    // Преследуем закреплённого врага
+    targetPosition = chaseEnemy.position;
+    updatedUnit.targetPosition = chaseEnemy.position;
   } else if (nearestEnemy) {
-    // Нет цели маршрута, но есть враг - идем к нему
+    // Нет закреплённой цели, но есть враг поблизости — идём к нему
     targetPosition = nearestEnemy.position;
     updatedUnit.targetPosition = nearestEnemy.position;
+    updatedUnit.target = nearestEnemy.id;
+  } else if (updatedUnit.targetPosition) {
+    // Цель маршрута
+    targetPosition = updatedUnit.targetPosition;
   } else if (nearestEnemyBuilding) {
-    // Нет цели маршрута и врагов, но есть здание - идем к нему
+    // Нет врагов, идём к зданию
     targetPosition = nearestEnemyBuilding.position;
     updatedUnit.targetPosition = nearestEnemyBuilding.position;
   } else {
