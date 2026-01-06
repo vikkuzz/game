@@ -101,23 +101,41 @@ export function useNetworkGameState({
     }
   }, [socketId, currentPlayerSlotMap, lobbyId, socket, isConnected]);
 
-  // Автоматическое переподключение при загрузке страницы
+  // Автоматическое переподключение при загрузке страницы или переподключении socket
   useEffect(() => {
-    if (socket && isConnected && lobbyId && myPlayerId !== null) {
-      // Проверяем, есть ли сохраненный playerId для этой комнаты
-      if (typeof window !== "undefined") {
-        const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
-        if (savedPlayerId) {
-          const playerId = parseInt(savedPlayerId, 10) as PlayerId;
-          // Если socket ID еще не в playerSlotMap, это переподключение
-          if (!socket.id || !currentPlayerSlotMap[socket.id]) {
-            console.log(`[useNetworkGameState] Attempting reconnect - playerId: ${playerId}, socketId: ${socket.id}`);
-            socket.emit("game:reconnect", {
-              roomId: lobbyId,
-              playerId: playerId,
-            });
-          }
-        }
+    if (!socket || !lobbyId || myPlayerId === null) return;
+    
+    // Проверяем, есть ли сохраненный playerId для этой комнаты
+    if (typeof window === "undefined") return;
+    
+    const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
+    if (!savedPlayerId) return;
+    
+    const playerId = parseInt(savedPlayerId, 10) as PlayerId;
+    
+    // Если socket подключен, но его ID еще не в playerSlotMap, это переподключение
+    if (isConnected && socket.id && !currentPlayerSlotMap[socket.id]) {
+      console.log(`[useNetworkGameState] Socket reconnected - attempting to restore playerId ${playerId}, new socketId: ${socket.id}`);
+      
+      // Находим старый socket ID по playerId
+      const oldSocketId = Object.keys(currentPlayerSlotMap).find(
+        key => currentPlayerSlotMap[key] === playerId
+      );
+      
+      if (oldSocketId) {
+        console.log(`[useNetworkGameState] Found old socketId ${oldSocketId}, updating to new socketId ${socket.id}`);
+        socket.emit("game:reconnect", {
+          roomId: lobbyId,
+          previousSocketId: oldSocketId,
+          playerId: playerId,
+        });
+      } else {
+        // Если старый socket ID не найден, просто отправляем reconnect с playerId
+        console.log(`[useNetworkGameState] No old socketId found, sending reconnect with playerId ${playerId}`);
+        socket.emit("game:reconnect", {
+          roomId: lobbyId,
+          playerId: playerId,
+        });
       }
     }
   }, [socket, isConnected, lobbyId, myPlayerId, currentPlayerSlotMap]);

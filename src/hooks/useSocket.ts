@@ -29,6 +29,21 @@ export function useSocket(): UseSocketReturn {
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
+    // Если socket уже существует и подключен, не создаем новый
+    if (socketRef.current && socketRef.current.connected) {
+      console.log("[useSocket] Socket already exists and connected, reusing:", socketRef.current.id);
+      setSocket(socketRef.current);
+      return;
+    }
+    
+    // Если socket существует, но не подключен, пытаемся переподключиться
+    if (socketRef.current && !socketRef.current.connected) {
+      console.log("[useSocket] Socket exists but not connected, attempting reconnect");
+      socketRef.current.connect();
+      setSocket(socketRef.current);
+      return;
+    }
+    
     // Создаем подключение к серверу
     // В продакшене используем NEXT_PUBLIC_SOCKET_URL (отдельный Socket.IO сервер)
     // В разработке используем текущий origin (локальный сервер)
@@ -37,13 +52,15 @@ export function useSocket(): UseSocketReturn {
         ? process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin
         : process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3000";
     
-    console.log("[useSocket] Connecting to Socket.IO server:", socketUrl);
+    console.log("[useSocket] Creating new Socket.IO connection to:", socketUrl);
     
     const newSocket = io(socketUrl, {
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity, // Бесконечные попытки переподключения
+      timeout: 20000,
     });
 
     socketRef.current = newSocket;
@@ -51,14 +68,41 @@ export function useSocket(): UseSocketReturn {
 
     // Обработчики событий подключения
     newSocket.on("connect", () => {
-      console.log("Connected to server");
+      console.log("[useSocket] Connected to server, socket.id:", newSocket.id);
       setIsConnected(true);
       setError(null);
     });
 
-    newSocket.on("disconnect", () => {
-      console.log("Disconnected from server");
+    newSocket.on("disconnect", (reason) => {
+      console.log("[useSocket] Disconnected from server, reason:", reason, "socket.id:", newSocket.id);
       setIsConnected(false);
+      
+      // Если это не инициированное отключение (transport close, ping timeout и т.д.), 
+      // Socket.IO автоматически попытается переподключиться
+      if (reason === "io server disconnect") {
+        // Сервер принудительно отключил клиента, нужно переподключиться вручную
+        console.log("[useSocket] Server disconnected, will reconnect manually");
+        newSocket.connect();
+      }
+    });
+    
+    newSocket.on("reconnect", (attemptNumber) => {
+      console.log("[useSocket] Reconnected to server after", attemptNumber, "attempts, new socket.id:", newSocket.id);
+      setIsConnected(true);
+      setError(null);
+    });
+    
+    newSocket.on("reconnect_attempt", (attemptNumber) => {
+      console.log("[useSocket] Reconnection attempt", attemptNumber);
+    });
+    
+    newSocket.on("reconnect_error", (error) => {
+      console.error("[useSocket] Reconnection error:", error);
+    });
+    
+    newSocket.on("reconnect_failed", () => {
+      console.error("[useSocket] Reconnection failed after all attempts");
+      setError("Не удалось переподключиться к серверу");
     });
 
     newSocket.on("connect_error", (err) => {
