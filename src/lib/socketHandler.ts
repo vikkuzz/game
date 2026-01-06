@@ -27,6 +27,11 @@ export default function socketHandler(io: SocketIOServer) {
       console.log(`[SocketHandler] Received event: ${eventName}`, args);
     });
 
+    // Логи runtime-ошибок, присылаемые клиентом (помогает понять, почему происходит full reload -> transport close)
+    socket.on("client:error", (payload: any) => {
+      console.error(`[ClientError] socket=${socket.id}`, payload);
+    });
+
     // Создание лобби
     socket.on("lobby:create", (data: { mode: GameMode; playerName: string }) => {
       try {

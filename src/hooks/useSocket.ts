@@ -27,6 +27,7 @@ export function useSocket(): UseSocketReturn {
   const [error, setError] = useState<string | null>(null);
   const [activeLobbies, setActiveLobbies] = useState<Lobby[]>([]);
   const socketRef = useRef<Socket | null>(null);
+  const clientErrorHandlersAttachedRef = useRef(false);
 
   useEffect(() => {
     // Если socket уже существует и подключен, не создаем новый
@@ -167,8 +168,83 @@ export function useSocket(): UseSocketReturn {
       setActiveLobbies(data.lobbies);
     });
 
+    // Репортинг runtime-ошибок клиента на сервер (полезно для отладки "transport close")
+    // В продакшене можно оставить (не критично), но по умолчанию логируем только в dev.
+    const shouldReportClientErrors =
+      typeof window !== "undefined" &&
+      process.env.NODE_ENV !== "production" &&
+      !clientErrorHandlersAttachedRef.current;
+
+    let onWindowError: ((event: ErrorEvent) => void) | null = null;
+    let onUnhandledRejection: ((event: PromiseRejectionEvent) => void) | null =
+      null;
+
+    if (shouldReportClientErrors && typeof window !== "undefined") {
+      clientErrorHandlersAttachedRef.current = true;
+
+      onWindowError = (event: ErrorEvent) => {
+        try {
+          const payload = {
+            type: "error",
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            stack: event.error?.stack,
+            href: window.location.href,
+            userAgent: navigator.userAgent,
+            ts: Date.now(),
+          };
+
+          // Локально в консоль (чтобы видеть в браузере)
+          console.error("[ClientRuntimeError]", payload);
+
+          // На сервер (чтобы видеть в терминале dev-сервера)
+          newSocket.emit("client:error", payload);
+        } catch (e) {
+          console.error("[ClientRuntimeError] Failed to report error:", e);
+        }
+      };
+
+      onUnhandledRejection = (event: PromiseRejectionEvent) => {
+        try {
+          const reason = event.reason as any;
+          const payload = {
+            type: "unhandledrejection",
+            message:
+              reason instanceof Error
+                ? reason.message
+                : typeof reason === "string"
+                  ? reason
+                  : "Unhandled promise rejection",
+            stack: reason instanceof Error ? reason.stack : undefined,
+            href: window.location.href,
+            userAgent: navigator.userAgent,
+            ts: Date.now(),
+          };
+
+          console.error("[ClientUnhandledRejection]", payload);
+          newSocket.emit("client:error", payload);
+        } catch (e) {
+          console.error(
+            "[ClientUnhandledRejection] Failed to report rejection:",
+            e
+          );
+        }
+      };
+
+      window.addEventListener("error", onWindowError);
+      window.addEventListener("unhandledrejection", onUnhandledRejection);
+    }
+
     // Очистка при размонтировании
     return () => {
+      if (onWindowError && typeof window !== "undefined") {
+        window.removeEventListener("error", onWindowError);
+      }
+      if (onUnhandledRejection && typeof window !== "undefined") {
+        window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      }
       newSocket.close();
       socketRef.current = null;
       setSocket(null);
