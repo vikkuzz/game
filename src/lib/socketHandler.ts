@@ -293,21 +293,17 @@ export default function socketHandler(io: SocketIOServer) {
         if (playerId !== null) {
           socket.join(data.roomId);
           
-          // Отправляем обновленное состояние
+          // Отправляем текущее состояние игры переподключившемуся игроку
           const aiSlots = Array.from(room.aiSlots);
           const playerSlotMap = Object.fromEntries(room.playerSlotMap);
+          
           socket.emit("game:state", {
             gameState: room.gameState,
             aiSlots: aiSlots,
-            playerSlotMap: playerSlotMap
+            playerSlotMap: playerSlotMap,
           });
           
-          // Также отправляем обновление всем остальным игрокам
-          io.to(data.roomId).emit("game:state", {
-            gameState: room.gameState,
-            aiSlots: aiSlots,
-            playerSlotMap: playerSlotMap
-          });
+          console.log(`[SocketHandler] Sent game state to reconnected player ${playerId} in room ${data.roomId}`);
           
           console.log(`[SocketHandler] Player ${playerId} reconnected to game ${data.roomId}`);
         } else {

@@ -19,34 +19,57 @@ import { MobileControlPanel } from "@/components/game/MobileControlPanel";
 function GamePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isNetworkMode = searchParams?.get("network") === "true";
-  const lobbyId = searchParams?.get("lobbyId") || null;
   const { socket, isConnected } = useSocket();
   const [networkGameData, setNetworkGameData] = useState<{
     lobby: any;
     playerSlotMap: Record<string, PlayerId>;
     aiSlots?: PlayerId[];
   } | null>(null);
+  const [isNetworkMode, setIsNetworkMode] = useState(false);
+  const [lobbyId, setLobbyId] = useState<string | null>(null);
 
-  // Загружаем данные сетевой игры из sessionStorage
+  // Загружаем данные сетевой игры из sessionStorage при загрузке страницы
+  // Это позволяет автоматически переподключаться при обновлении страницы
   useEffect(() => {
-    if (isNetworkMode && typeof window !== "undefined") {
-      const stored = sessionStorage.getItem("networkGameData");
-      if (stored) {
-        try {
-          const data = JSON.parse(stored);
-          setNetworkGameData(data);
-        } catch (error) {
-          console.error("Error parsing network game data:", error);
-          // Если данные некорректны, возвращаемся в лобби
-          router.push("/game/lobby");
+    if (typeof window === "undefined") return;
+
+    // Сначала проверяем URL параметры
+    const urlNetworkMode = searchParams?.get("network") === "true";
+    const urlLobbyId = searchParams?.get("lobbyId") || null;
+
+    // Затем проверяем sessionStorage для автоматического переподключения
+    const stored = sessionStorage.getItem("networkGameData");
+    
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        // Если есть сохраненные данные, используем их для переподключения
+        setNetworkGameData(data);
+        setIsNetworkMode(true);
+        setLobbyId(data.lobby.id);
+        
+        // Обновляем URL, если он не совпадает
+        if (!urlNetworkMode || urlLobbyId !== data.lobby.id) {
+          router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
         }
-      } else {
-        // Если данных нет, возвращаемся в лобби
+        
+        console.log("[GamePage] Restored network game from sessionStorage:", data.lobby.id);
+      } catch (error) {
+        console.error("Error parsing network game data:", error);
+        // Если данные некорректны, очищаем и возвращаемся в лобби
+        sessionStorage.removeItem("networkGameData");
         router.push("/game/lobby");
       }
+    } else if (urlNetworkMode && urlLobbyId) {
+      // Если нет сохраненных данных, но есть URL параметры - это новый вход
+      // В этом случае нужно загрузить данные из лобби или вернуться туда
+      router.push("/game/lobby");
+    } else {
+      // Нет ни сохраненных данных, ни URL параметров - оффлайн режим
+      setIsNetworkMode(false);
+      setLobbyId(null);
     }
-  }, [isNetworkMode, router]);
+  }, [searchParams, router]);
 
   // В оффлайн-режиме используем локальное состояние и игровой цикл,
   // в сетевом режиме — только состояние, приходящее с сервера.

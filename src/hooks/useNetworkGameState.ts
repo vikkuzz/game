@@ -101,6 +101,27 @@ export function useNetworkGameState({
     }
   }, [socketId, currentPlayerSlotMap, lobbyId, socket, isConnected]);
 
+  // Автоматическое переподключение при загрузке страницы
+  useEffect(() => {
+    if (socket && isConnected && lobbyId && myPlayerId !== null) {
+      // Проверяем, есть ли сохраненный playerId для этой комнаты
+      if (typeof window !== "undefined") {
+        const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
+        if (savedPlayerId) {
+          const playerId = parseInt(savedPlayerId, 10) as PlayerId;
+          // Если socket ID еще не в playerSlotMap, это переподключение
+          if (!socket.id || !currentPlayerSlotMap[socket.id]) {
+            console.log(`[useNetworkGameState] Attempting reconnect - playerId: ${playerId}, socketId: ${socket.id}`);
+            socket.emit("game:reconnect", {
+              roomId: lobbyId,
+              playerId: playerId,
+            });
+          }
+        }
+      }
+    }
+  }, [socket, isConnected, lobbyId, myPlayerId, currentPlayerSlotMap]);
+
   // Запрос начального состояния игры
   useEffect(() => {
     if (socket && isConnected && lobbyId && !gameState) {
