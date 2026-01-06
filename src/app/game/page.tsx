@@ -35,6 +35,8 @@ function GamePageContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    let isMounted = true;
+
     // Сначала проверяем URL параметры
     const urlNetworkMode = searchParams?.get("network") === "true";
     const urlLobbyId = searchParams?.get("lobbyId") || null;
@@ -46,13 +48,20 @@ function GamePageContent() {
       try {
         const data = JSON.parse(stored);
         // Если есть сохраненные данные, используем их для переподключения
-        setNetworkGameData(data);
-        setIsNetworkMode(true);
-        setLobbyId(data.lobby.id);
+        if (isMounted) {
+          setNetworkGameData(data);
+          setIsNetworkMode(true);
+          setLobbyId(data.lobby.id);
+        }
         
-        // Обновляем URL, если он не совпадает
+        // Обновляем URL, если он не совпадает (асинхронно, не блокируем рендер)
         if (!urlNetworkMode || urlLobbyId !== data.lobby.id) {
-          router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
+          // Используем setTimeout для асинхронного обновления URL
+          setTimeout(() => {
+            if (isMounted) {
+              router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
+            }
+          }, 0);
         }
         
         console.log("[GamePage] Restored network game from sessionStorage:", data.lobby.id);
@@ -60,17 +69,31 @@ function GamePageContent() {
         console.error("Error parsing network game data:", error);
         // Если данные некорректны, очищаем и возвращаемся в лобби
         sessionStorage.removeItem("networkGameData");
-        router.push("/game/lobby");
+        if (isMounted) {
+          setTimeout(() => {
+            router.push("/game/lobby");
+          }, 0);
+        }
       }
     } else if (urlNetworkMode && urlLobbyId) {
       // Если нет сохраненных данных, но есть URL параметры - это новый вход
       // В этом случае нужно загрузить данные из лобби или вернуться туда
-      router.push("/game/lobby");
+      if (isMounted) {
+        setTimeout(() => {
+          router.push("/game/lobby");
+        }, 0);
+      }
     } else {
       // Нет ни сохраненных данных, ни URL параметров - оффлайн режим
-      setIsNetworkMode(false);
-      setLobbyId(null);
+      if (isMounted) {
+        setIsNetworkMode(false);
+        setLobbyId(null);
+      }
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [searchParams, router]);
 
   // В оффлайн-режиме используем локальное состояние и игровой цикл,
@@ -272,7 +295,18 @@ function GamePageContent() {
 
   // Обновляем модальное окно при изменении gameState
   useEffect(() => {
-    if (modalBuilding && currentPlayer) {
+    if (!gameState || !modalBuilding) return;
+    
+    let isMounted = true;
+    
+    // Используем setTimeout для асинхронного обновления, чтобы избежать проблем с рендерингом
+    const timeoutId = setTimeout(() => {
+      if (!isMounted || !gameState) return;
+      
+      const selectedPlayer = gameState.selectedPlayer ?? 0;
+      const currentPlayer = gameState.players[selectedPlayer];
+      if (!currentPlayer) return;
+      
       let updatedBuilding: Building | null = null;
       if (currentPlayer.castle.id === modalBuilding.id) {
         updatedBuilding = currentPlayer.castle;
@@ -281,14 +315,22 @@ function GamePageContent() {
           (b) => b.id === modalBuilding.id
         ) || null;
       }
-      if (updatedBuilding) {
-        setModalBuilding(updatedBuilding);
-      } else {
-        // Здание было уничтожено, закрываем модальное окно
-        setModalBuilding(null);
+      
+      if (isMounted) {
+        if (updatedBuilding) {
+          setModalBuilding(updatedBuilding);
+        } else {
+          // Здание было уничтожено, закрываем модальное окно
+          setModalBuilding(null);
+        }
       }
-    }
-  }, [gameState, modalBuilding, currentPlayer]);
+    }, 0);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+    };
+  }, [gameState, modalBuilding]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex flex-col md:block">

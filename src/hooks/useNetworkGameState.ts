@@ -133,11 +133,15 @@ export function useNetworkGameState({
   useEffect(() => {
     if (!socket) return;
 
+    let isMounted = true;
+
     const handleGameState = (data: { 
       gameState: GameState; 
       aiSlots?: PlayerId[];
       playerSlotMap?: Record<string, PlayerId>;
     }) => {
+      if (!isMounted) return;
+
       // Уменьшаем количество логов - логируем только при значительных изменениях
       const shouldLog = !gameState || Math.abs(data.gameState.gameTime - (gameState?.gameTime || 0)) > 1000;
       
@@ -146,11 +150,11 @@ export function useNetworkGameState({
         console.log("[useNetworkGameState] Game time:", data.gameState.gameTime);
       }
       
-      if (data.aiSlots) {
+      if (data.aiSlots && isMounted) {
         setAiSlots(data.aiSlots);
       }
       
-      if (data.playerSlotMap) {
+      if (data.playerSlotMap && isMounted) {
         // Обновляем playerSlotMap при получении обновления от сервера
         // Это важно при переподключении или если сервер обновил маппинг
         const playerSlotMapChanged = JSON.stringify(data.playerSlotMap) !== JSON.stringify(currentPlayerSlotMap);
@@ -160,7 +164,7 @@ export function useNetworkGameState({
           
           // Если у нас есть socket ID, пытаемся определить playerId
           // Если socket ID не найден, используем сохраненный playerId
-          if (socket?.id) {
+          if (socket?.id && isMounted) {
             const playerIdFromMap = data.playerSlotMap[socket.id];
             if (playerIdFromMap !== undefined && playerIdFromMap !== myPlayerId) {
               console.log(`[useNetworkGameState] Player slot assignment - socketId: ${socket.id}, playerId: ${playerIdFromMap}`);
@@ -171,7 +175,7 @@ export function useNetworkGameState({
               }
             } else if (playerIdFromMap === undefined) {
               // Если socket ID не найден, пытаемся использовать сохраненный playerId
-              if (typeof window !== "undefined" && lobbyId) {
+              if (typeof window !== "undefined" && lobbyId && isMounted) {
                 const savedPlayerId = sessionStorage.getItem(`playerId_${lobbyId}`);
                 if (savedPlayerId !== null) {
                   const playerId = parseInt(savedPlayerId, 10) as PlayerId;
@@ -190,15 +194,18 @@ export function useNetworkGameState({
       // Но игровой цикл работает локально, поэтому мы не перезаписываем gameState полностью
       // Вместо этого мы сохраняем его для использования в синхронизации
       // Но не устанавливаем как основной источник, чтобы локальный цикл продолжал работать
-      setGameState(data.gameState);
+      if (isMounted) {
+        setGameState(data.gameState);
+      }
     };
 
     socket.on("game:state", handleGameState);
 
     return () => {
+      isMounted = false;
       socket.off("game:state", handleGameState);
     };
-  }, [socket]);
+  }, [socket, gameState, currentPlayerSlotMap, myPlayerId, lobbyId]);
 
   // Отправка действия на сервер
   const sendAction = useCallback(
