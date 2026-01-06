@@ -7,8 +7,8 @@ import type { Server as SocketIOServer } from "socket.io";
 import { gameServer } from "./gameServer";
 
 // Периодическая синхронизация полного состояния игры для всех клиентов.
-// 1 секунда достаточно часто для плавности и достаточно редко, чтобы не перегружать сеть.
-const SYNC_INTERVAL = 1000; // 1 секунда между синхронизациями
+// 200 мс обеспечивает хорошую плавность (5 обновлений в секунду) без излишней нагрузки на сеть.
+const SYNC_INTERVAL = 200; // 200 мс между синхронизациями (5 раз в секунду)
 const syncTimers: Map<string, NodeJS.Timeout> = new Map();
 
 /**
