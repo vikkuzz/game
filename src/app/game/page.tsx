@@ -29,12 +29,16 @@ function GamePageContent() {
   const [isNetworkMode, setIsNetworkMode] = useState(false);
   const [lobbyId, setLobbyId] = useState<string | null>(null);
   const [modalBuilding, setModalBuilding] = useState<Building | null>(null);
+  
+  // Используем ref для отслеживания инициализации и предотвращения множественных обновлений
+  const initializationRef = React.useRef(false);
 
   // Загружаем данные сетевой игры из sessionStorage при загрузке страницы
   // Это позволяет автоматически переподключаться при обновлении страницы
   useEffect(() => {
     if (typeof window === "undefined") return;
-
+    if (initializationRef.current) return; // Предотвращаем повторную инициализацию
+    
     let isMounted = true;
     let navigationTimeout: NodeJS.Timeout | null = null;
 
@@ -49,10 +53,14 @@ function GamePageContent() {
       try {
         const data = JSON.parse(stored);
         // Если есть сохраненные данные, используем их для переподключения
+        // Обновляем состояние одним батчем через React.startTransition
         if (isMounted) {
-          setNetworkGameData(data);
-          setIsNetworkMode(true);
-          setLobbyId(data.lobby.id);
+          React.startTransition(() => {
+            setNetworkGameData(data);
+            setIsNetworkMode(true);
+            setLobbyId(data.lobby.id);
+          });
+          initializationRef.current = true;
         }
         
         // Обновляем URL, если он не совпадает (асинхронно, не блокируем рендер)
@@ -103,8 +111,11 @@ function GamePageContent() {
     } else {
       // Нет ни сохраненных данных, ни URL параметров - оффлайн режим
       if (isMounted) {
-        setIsNetworkMode(false);
-        setLobbyId(null);
+        React.startTransition(() => {
+          setIsNetworkMode(false);
+          setLobbyId(null);
+        });
+        initializationRef.current = true;
       }
     }
 
