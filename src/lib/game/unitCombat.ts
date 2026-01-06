@@ -38,7 +38,9 @@ export function canUnitAttack(unit: Unit, now: number): boolean {
  */
 export function getEffectiveAttackRange(unit: Unit): number {
   const isRanged = unit.attackRange > COMBAT_CONSTANTS.RANGED_THRESHOLD;
-  return isRanged ? unit.attackRange : COMBAT_CONSTANTS.MELEE_DISTANCE;
+  // Для ближнего боя используем attackRange юнита, но не меньше MELEE_DISTANCE
+  // Это позволяет воинам с attackRange=50 атаковать на этой дистанции
+  return isRanged ? unit.attackRange : Math.max(unit.attackRange, COMBAT_CONSTANTS.MELEE_DISTANCE);
 }
 
 /**
@@ -137,7 +139,7 @@ export function processUnitCombat(
 
   // Обработка атак
   allUnits.forEach((unit) => {
-    if (unit.health <= 0 || attackedUnits.has(unit.id) || unit.isMoving) {
+    if (unit.health <= 0 || attackedUnits.has(unit.id)) {
       return;
     }
 
@@ -155,6 +157,15 @@ export function processUnitCombat(
     const enemy = findNearestEnemy(unit, enemyUnits);
 
     if (!enemy) {
+      return;
+    }
+
+    // Проверяем дистанцию до врага
+    const distanceToEnemy = getDistance(unit.position, enemy.position);
+    const effectiveRange = getEffectiveAttackRange(unit);
+    
+    // Если враг вне дистанции атаки, пропускаем атаку (юнит продолжит движение)
+    if (distanceToEnemy > effectiveRange) {
       return;
     }
 

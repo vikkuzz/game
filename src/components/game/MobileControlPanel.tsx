@@ -5,6 +5,7 @@ import { GameState, UnitType, PlayerId } from "@/types/game";
 import { Button } from "@/components/Button";
 import { GAME_CONFIG } from "@/lib/gameLogic";
 import { cn } from "@/lib/utils";
+import { BuildingsList } from "./BuildingsList";
 
 interface MobileControlPanelProps {
   gameState: GameState;
@@ -41,7 +42,8 @@ export const MobileControlPanel: React.FC<MobileControlPanelProps> = ({
   myPlayerId = null,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>("buildings");
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true); // Компактный режим по умолчанию
+  const [showOnlyNeedsAttention, setShowOnlyNeedsAttention] = useState(false);
   const player = gameState.players[selectedPlayer];
   if (!player) return null;
 
@@ -61,25 +63,66 @@ export const MobileControlPanel: React.FC<MobileControlPanelProps> = ({
     { id: "stats", label: "Статистика", icon: "📊" },
   ];
 
+  // Собираем все здания игрока
+  const allBuildings = [
+    player.castle,
+    ...player.barracks,
+    ...player.towers,
+  ];
+
+  // Подсчитываем здания, требующие внимания
+  const buildingsNeedingAttention = allBuildings.filter((building) => {
+    const healthPercent = (building.health / building.maxHealth) * 100;
+    const canUpgrade =
+      player.gold >= building.level * 200 &&
+      !(building.upgradeCooldown && building.upgradeCooldown > 0);
+    const canRepair =
+      building.health < building.maxHealth &&
+      player.gold >= 100 &&
+      !(building.repairCooldown && building.repairCooldown > 0);
+    return healthPercent < 75 || canUpgrade || canRepair;
+  }).length;
+
   return (
     <div className={cn(
       "lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-gray-900 border-t-2 border-gray-700 safe-area-inset-bottom transition-all duration-300",
-      isCollapsed ? "max-h-[60px]" : ""
+      isCollapsed ? "max-h-[70px]" : ""
     )}>
-      {/* Кнопка сворачивания */}
-      <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="w-full py-2 px-4 flex items-center justify-center gap-2 text-gray-400 hover:text-white active:bg-gray-800 transition-colors touch-manipulation border-b border-gray-700">
-        <span className="text-sm font-medium">
-          {isCollapsed ? "Развернуть меню" : "Свернуть меню"}
-        </span>
-        <span className={cn(
-          "transition-transform duration-300 text-lg",
-          isCollapsed ? "rotate-180" : ""
-        )}>
-          ▼
-        </span>
-      </button>
+      {/* Компактная панель (всегда видна) */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="text-yellow-400 font-bold text-lg">
+                💰 {Math.floor(player.gold)}
+              </span>
+              <span className="text-green-400 text-sm">
+                +{player.goldIncome}/сек
+              </span>
+            </div>
+          </div>
+          {buildingsNeedingAttention > 0 && (
+            <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+              {buildingsNeedingAttention}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => {
+            setIsCollapsed(!isCollapsed);
+            if (isCollapsed) {
+              setActiveTab("buildings");
+            }
+          }}
+          className={cn(
+            "px-4 py-2 rounded-lg font-medium transition-colors touch-manipulation",
+            isCollapsed
+              ? "bg-blue-600 text-white"
+              : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+          )}>
+          {isCollapsed ? "📈 Развитие" : "▼ Свернуть"}
+        </button>
+      </div>
 
       {/* Табы */}
       <div className={cn(
@@ -114,167 +157,33 @@ export const MobileControlPanel: React.FC<MobileControlPanelProps> = ({
           {/* Таб: Здания */}
           {activeTab === "buildings" && (
             <>
-              {selectedBuilding ? (
-                <>
-                  <div className="mb-4">
-                    <h3 className="text-lg font-bold mb-2 text-white">
-                      {selectedBuilding.type === "castle" && "🏰 Замок"}
-                      {selectedBuilding.type === "barracks" && "🏛️ Бараки"}
-                      {selectedBuilding.type === "tower" && "🗼 Башня"}
-                    </h3>
-                    <div className="space-y-2 mb-4">
-                      <div className="text-sm text-gray-300">
-                        Здоровье: {Math.floor(selectedBuilding.health)} /{" "}
-                        {selectedBuilding.maxHealth}
-                      </div>
-                      <div className="text-sm text-gray-300">
-                        Уровень: {selectedBuilding.level}
-                      </div>
-                      {/* Полоса здоровья */}
-                      <div className="w-full h-3 bg-gray-700 rounded-full overflow-hidden">
-                        <div
-                          className={cn(
-                            "h-full transition-all duration-300",
-                            (selectedBuilding.health / selectedBuilding.maxHealth) * 100 > 50
-                              ? "bg-green-500"
-                              : (selectedBuilding.health / selectedBuilding.maxHealth) * 100 > 25
-                              ? "bg-yellow-500"
-                              : "bg-red-500"
-                          )}
-                          style={{
-                            width: `${
-                              (selectedBuilding.health / selectedBuilding.maxHealth) * 100
-                            }%`,
-                          }}
-                        />
-                      </div>
-                    </div>
+              {/* Фильтр и переключатель */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Все здания</h3>
+                <button
+                  onClick={() => setShowOnlyNeedsAttention(!showOnlyNeedsAttention)}
+                  className={cn(
+                    "px-3 py-1 rounded text-sm font-medium transition-colors touch-manipulation",
+                    showOnlyNeedsAttention
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                  )}>
+                  {showOnlyNeedsAttention ? "⚠️ Требуют внимания" : "📋 Все"}
+                </button>
+              </div>
 
-                    {/* Действия с зданием */}
-                    <div className="flex flex-col gap-3">
-                      {/* Улучшение */}
-                      <div className="space-y-1">
-                        <Button
-                          onClick={() =>
-                            onUpgradeBuilding(selectedPlayer, selectedBuilding.id)
-                          }
-                          disabled={
-                            player.gold < selectedBuilding.level * 200 ||
-                            !!(
-                              selectedBuilding.upgradeCooldown &&
-                              selectedBuilding.upgradeCooldown > 0
-                            ) ||
-                            (selectedBuilding.type === "barracks" &&
-                              selectedBuilding.level >= 2 &&
-                              player.castle.level < 2)
-                          }
-                          variant="primary"
-                          size="lg"
-                          className="w-full py-4 text-base touch-manipulation min-h-[48px]">
-                          ⬆ Улучшить ({selectedBuilding.level * 200} золота)
-                        </Button>
-                        {selectedBuilding.upgradeCooldown &&
-                          selectedBuilding.upgradeCooldown > 0 && (
-                            <div className="w-full">
-                              <div className="flex justify-between text-xs text-gray-300 mb-1">
-                                <span>Кулдаун улучшения:</span>
-                                <span>
-                                  {Math.ceil(selectedBuilding.upgradeCooldown / 1000)}с
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-700 rounded-full h-2">
-                                <div
-                                  className="bg-orange-600 h-2 rounded-full transition-all duration-300"
-                                  style={{
-                                    width: `${
-                                      ((5000 - selectedBuilding.upgradeCooldown) /
-                                        5000) *
-                                      100
-                                    }%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          )}
-                      </div>
-
-                      {/* Починка */}
-                      <div className="space-y-1">
-                        <Button
-                          onClick={() =>
-                            onRepairBuilding(selectedPlayer, selectedBuilding.id)
-                          }
-                          disabled={
-                            selectedBuilding.health >= selectedBuilding.maxHealth ||
-                            player.gold < 100 ||
-                            !!(selectedBuilding.repairCooldown && selectedBuilding.repairCooldown > 0)
-                          }
-                          variant="secondary"
-                          size="lg"
-                          className="w-full py-4 text-base touch-manipulation min-h-[48px]">
-                          🔧 Починить (100 золота)
-                        </Button>
-                        {selectedBuilding.repairCooldown &&
-                          selectedBuilding.repairCooldown > 0 && (
-                            <div className="w-full">
-                              <div className="flex justify-between text-xs text-gray-300 mb-1">
-                                <span>Кулдаун починки:</span>
-                                <span>
-                                  {Math.ceil(selectedBuilding.repairCooldown / 1000)}с
-                                </span>
-                              </div>
-                              <div className="w-full bg-gray-700 rounded-full h-2">
-                                <div
-                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                  style={{
-                                    width: `${
-                                      ((300000 - selectedBuilding.repairCooldown) /
-                                        300000) *
-                                      100
-                                    }%`,
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          )}
-                      </div>
-
-                      {/* Покупка юнитов (только для бараков) */}
-                      {selectedBuilding.type === "barracks" && (
-                        <div className="mt-2 space-y-2">
-                          <div className="text-sm font-semibold text-white">
-                            Купить юнитов:
-                            {(selectedBuilding.availableUnits || 0) > 0 &&
-                              ` ${selectedBuilding.availableUnits} доступно`}
-                          </div>
-                          <Button
-                            onClick={() =>
-                              onBuyUnit(
-                                selectedPlayer,
-                                selectedBuilding.id,
-                                "warrior"
-                              )
-                            }
-                            disabled={
-                              player.gold < GAME_CONFIG.unitCost.warrior ||
-                              (selectedBuilding.availableUnits || 0) <= 0
-                            }
-                            variant="success"
-                            size="lg"
-                            className="w-full py-4 text-base touch-manipulation min-h-[48px]">
-                            ⚔️ Воин ({GAME_CONFIG.unitCost.warrior} золота)
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="text-center text-gray-400 py-8">
-                  <div className="text-4xl mb-2">🏛️</div>
-                  <p>Выберите здание на карте</p>
-                </div>
-              )}
+              {/* Список зданий */}
+              <BuildingsList
+                buildings={allBuildings}
+                player={player}
+                playerId={selectedPlayer}
+                onUpgrade={(buildingId) => onUpgradeBuilding(selectedPlayer, buildingId)}
+                onRepair={(buildingId) => onRepairBuilding(selectedPlayer, buildingId)}
+                onBuyUnit={(buildingId, unitType) => onBuyUnit(selectedPlayer, buildingId, unitType)}
+                groupBy="type"
+                showOnlyNeedsAttention={showOnlyNeedsAttention}
+                compact={false}
+              />
             </>
           )}
 

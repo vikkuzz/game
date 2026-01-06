@@ -1,10 +1,11 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { GameState, UnitType, PlayerId } from "@/types/game";
 import { Button } from "@/components/Button";
 import { GAME_CONFIG } from "@/lib/gameLogic";
 import { cn } from "@/lib/utils";
+import { BuildingsList } from "./BuildingsList";
 
 interface ControlPanelProps {
   gameState: GameState;
@@ -38,6 +39,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   isNetworkMode = false,
   myPlayerId = null,
 }) => {
+  const [showAllBuildings, setShowAllBuildings] = useState(false);
+  const [showOnlyNeedsAttention, setShowOnlyNeedsAttention] = useState(false);
   const player = gameState.players[selectedPlayer];
   if (!player) return null;
 
@@ -49,6 +52,13 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         );
 
   const playerColors = ["blue", "red", "green", "yellow"];
+
+  // Собираем все здания игрока
+  const allBuildings = [
+    player.castle,
+    ...player.barracks,
+    ...player.towers,
+  ];
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-6 space-y-6 max-h-[600px] overflow-y-auto">
@@ -113,145 +123,183 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
       </div>
 
-      {/* Выбранное здание */}
-      {selectedBuilding && (
-        <div className="border-t pt-4">
-          <h3 className="text-lg font-bold mb-2">
-            {selectedBuilding.type === "castle" && "Замок"}
-            {selectedBuilding.type === "barracks" && "Бараки"}
-            {selectedBuilding.type === "tower" && "Башня"}
-          </h3>
-          <div className="space-y-2">
-            <div className="text-sm">
-              Здоровье: {Math.floor(selectedBuilding.health)} /{" "}
-              {selectedBuilding.maxHealth}
-            </div>
-            <div className="text-sm">Уровень: {selectedBuilding.level}</div>
-
-            {/* Действия с зданием */}
-            <div className="flex flex-col gap-2 mt-4">
-              {/* Улучшение */}
-              <div className="space-y-1">
-                <Button
-                  onClick={() =>
-                    onUpgradeBuilding(selectedPlayer, selectedBuilding.id)
-                  }
-                  disabled={
-                    player.gold < selectedBuilding.level * 200 ||
-                    !!(
-                      selectedBuilding.upgradeCooldown &&
-                      selectedBuilding.upgradeCooldown > 0
-                    ) ||
-                    // Бараки можно улучшать до 3 уровня только если замок минимум 2 уровня
-                    (selectedBuilding.type === "barracks" &&
-                      selectedBuilding.level >= 2 &&
-                      player.castle.level < 2)
-                  }
-                  variant="primary"
-                  size="sm"
-                  className="w-full">
-                  Улучшить ({selectedBuilding.level * 200} золота)
-                </Button>
-                {selectedBuilding.upgradeCooldown &&
-                  selectedBuilding.upgradeCooldown > 0 && (
-                    <div className="w-full">
-                      <div className="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Кулдаун улучшения:</span>
-                        <span>
-                          {Math.ceil(selectedBuilding.upgradeCooldown / 1000)}с
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-orange-600 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${
-                              ((5000 - selectedBuilding.upgradeCooldown) /
-                                5000) *
-                              100
-                            }%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              {/* Починка */}
-              <div className="space-y-1">
-                <Button
-                  onClick={() =>
-                    onRepairBuilding(selectedPlayer, selectedBuilding.id)
-                  }
-                  disabled={
-                    selectedBuilding.health >= selectedBuilding.maxHealth ||
-                    player.gold < 100 ||
-                    !!(
-                      selectedBuilding.repairCooldown &&
-                      selectedBuilding.repairCooldown > 0
-                    )
-                  }
-                  variant="secondary"
-                  size="sm"
-                  className="w-full">
-                  Починить (100 золота)
-                </Button>
-                {selectedBuilding.repairCooldown &&
-                  selectedBuilding.repairCooldown > 0 && (
-                    <div className="w-full">
-                      <div className="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Кулдаун починки:</span>
-                        <span>
-                          {Math.ceil(selectedBuilding.repairCooldown / 1000)}с
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-700 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${
-                              ((300000 - selectedBuilding.repairCooldown) /
-                                300000) *
-                              100
-                            }%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              {/* Покупка юнитов (только для бараков) */}
-              {selectedBuilding.type === "barracks" && (
-                <div className="mt-4 space-y-2">
-                  <div className="text-sm font-semibold">Купить юнитов:</div>
-                  <div className="space-y-1">
-                    <Button
-                      onClick={() =>
-                        onBuyUnit(
-                          selectedPlayer,
-                          selectedBuilding.id,
-                          "warrior"
-                        )
-                      }
-                      disabled={
-                        player.gold < GAME_CONFIG.unitCost.warrior ||
-                        (selectedBuilding.availableUnits || 0) <= 0
-                      }
-                      variant="success"
-                      size="sm"
-                      className="w-full">
-                      Воин ({GAME_CONFIG.unitCost.warrior} золота)
-                      {(selectedBuilding.availableUnits || 0) > 0 &&
-                        ` - ${selectedBuilding.availableUnits} доступно`}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
+      {/* Переключатель режима просмотра */}
+      <div className="border-t pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold">Здания</h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowAllBuildings(!showAllBuildings)}
+              className={cn(
+                "px-3 py-1 rounded text-sm font-medium transition-colors",
+                showAllBuildings
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              )}>
+              {showAllBuildings ? "📋 Все здания" : "🎯 Выбранное"}
+            </button>
+            {showAllBuildings && (
+              <button
+                onClick={() => setShowOnlyNeedsAttention(!showOnlyNeedsAttention)}
+                className={cn(
+                  "px-3 py-1 rounded text-sm font-medium transition-colors",
+                  showOnlyNeedsAttention
+                    ? "bg-orange-600 text-white"
+                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                )}>
+                ⚠️
+              </button>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Режим: Все здания */}
+        {showAllBuildings ? (
+          <BuildingsList
+            buildings={allBuildings}
+            player={player}
+            playerId={selectedPlayer}
+            onUpgrade={(buildingId) => onUpgradeBuilding(selectedPlayer, buildingId)}
+            onRepair={(buildingId) => onRepairBuilding(selectedPlayer, buildingId)}
+            onBuyUnit={(buildingId, unitType) => onBuyUnit(selectedPlayer, buildingId, unitType)}
+            groupBy="type"
+            showOnlyNeedsAttention={showOnlyNeedsAttention}
+            compact={false}
+          />
+        ) : (
+          /* Режим: Выбранное здание (старый интерфейс для обратной совместимости) */
+          selectedBuilding && (
+            <div className="space-y-2">
+              <div className="text-sm">
+                Здоровье: {Math.floor(selectedBuilding.health)} /{" "}
+                {selectedBuilding.maxHealth}
+              </div>
+              <div className="text-sm">Уровень: {selectedBuilding.level}</div>
+
+              {/* Действия с зданием */}
+              <div className="flex flex-col gap-2 mt-4">
+                {/* Улучшение */}
+                <div className="space-y-1">
+                  <Button
+                    onClick={() =>
+                      onUpgradeBuilding(selectedPlayer, selectedBuilding.id)
+                    }
+                    disabled={
+                      player.gold < selectedBuilding.level * 200 ||
+                      !!(
+                        selectedBuilding.upgradeCooldown &&
+                        selectedBuilding.upgradeCooldown > 0
+                      ) ||
+                      (selectedBuilding.type === "barracks" &&
+                        selectedBuilding.level >= 2 &&
+                        player.castle.level < 2)
+                    }
+                    variant="primary"
+                    size="sm"
+                    className="w-full">
+                    Улучшить ({selectedBuilding.level * 200} золота)
+                  </Button>
+                  {selectedBuilding.upgradeCooldown &&
+                    selectedBuilding.upgradeCooldown > 0 && (
+                      <div className="w-full">
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                          <span>Кулдаун улучшения:</span>
+                          <span>
+                            {Math.ceil(selectedBuilding.upgradeCooldown / 1000)}с
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div
+                            className="bg-orange-600 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${
+                                ((5000 - selectedBuilding.upgradeCooldown) /
+                                  5000) *
+                                100
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                </div>
+
+                {/* Починка */}
+                <div className="space-y-1">
+                  <Button
+                    onClick={() =>
+                      onRepairBuilding(selectedPlayer, selectedBuilding.id)
+                    }
+                    disabled={
+                      selectedBuilding.health >= selectedBuilding.maxHealth ||
+                      player.gold < 100 ||
+                      !!(
+                        selectedBuilding.repairCooldown &&
+                        selectedBuilding.repairCooldown > 0
+                      )
+                    }
+                    variant="secondary"
+                    size="sm"
+                    className="w-full">
+                    Починить (100 золота)
+                  </Button>
+                  {selectedBuilding.repairCooldown &&
+                    selectedBuilding.repairCooldown > 0 && (
+                      <div className="w-full">
+                        <div className="flex justify-between text-xs text-gray-400 mb-1">
+                          <span>Кулдаун починки:</span>
+                          <span>
+                            {Math.ceil(selectedBuilding.repairCooldown / 1000)}с
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${
+                                ((300000 - selectedBuilding.repairCooldown) /
+                                  300000) *
+                                100
+                              }%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                </div>
+
+                {/* Покупка юнитов (только для бараков) */}
+                {selectedBuilding.type === "barracks" && (
+                  <div className="mt-4 space-y-2">
+                    <div className="text-sm font-semibold">Купить юнитов:</div>
+                    <div className="space-y-1">
+                      <Button
+                        onClick={() =>
+                          onBuyUnit(
+                            selectedPlayer,
+                            selectedBuilding.id,
+                            "warrior"
+                          )
+                        }
+                        disabled={
+                          player.gold < GAME_CONFIG.unitCost.warrior ||
+                          (selectedBuilding.availableUnits || 0) <= 0
+                        }
+                        variant="success"
+                        size="sm"
+                        className="w-full">
+                        Воин ({GAME_CONFIG.unitCost.warrior} золота)
+                        {(selectedBuilding.availableUnits || 0) > 0 &&
+                          ` - ${selectedBuilding.availableUnits} доступно`}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        )}
+      </div>
 
       {/* Прокачка замка */}
       {selectedBuilding && selectedBuilding.type === "castle" && (
