@@ -36,6 +36,7 @@ function GamePageContent() {
     if (typeof window === "undefined") return;
 
     let isMounted = true;
+    let navigationTimeout: NodeJS.Timeout | null = null;
 
     // Сначала проверяем URL параметры
     const urlNetworkMode = searchParams?.get("network") === "true";
@@ -56,12 +57,16 @@ function GamePageContent() {
         
         // Обновляем URL, если он не совпадает (асинхронно, не блокируем рендер)
         if (!urlNetworkMode || urlLobbyId !== data.lobby.id) {
-          // Используем setTimeout для асинхронного обновления URL
-          setTimeout(() => {
-            if (isMounted) {
-              router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
+          // Используем requestAnimationFrame для асинхронного обновления URL после рендера
+          navigationTimeout = setTimeout(() => {
+            if (isMounted && typeof window !== "undefined") {
+              try {
+                router.replace(`/game?network=true&lobbyId=${data.lobby.id}`, { scroll: false });
+              } catch (error) {
+                console.error("Error navigating:", error);
+              }
             }
-          }, 0);
+          }, 100);
         }
         
         console.log("[GamePage] Restored network game from sessionStorage:", data.lobby.id);
@@ -70,18 +75,30 @@ function GamePageContent() {
         // Если данные некорректны, очищаем и возвращаемся в лобби
         sessionStorage.removeItem("networkGameData");
         if (isMounted) {
-          setTimeout(() => {
-            router.push("/game/lobby");
-          }, 0);
+          navigationTimeout = setTimeout(() => {
+            if (isMounted && typeof window !== "undefined") {
+              try {
+                router.push("/game/lobby");
+              } catch (error) {
+                console.error("Error navigating to lobby:", error);
+              }
+            }
+          }, 100);
         }
       }
     } else if (urlNetworkMode && urlLobbyId) {
       // Если нет сохраненных данных, но есть URL параметры - это новый вход
       // В этом случае нужно загрузить данные из лобби или вернуться туда
       if (isMounted) {
-        setTimeout(() => {
-          router.push("/game/lobby");
-        }, 0);
+        navigationTimeout = setTimeout(() => {
+          if (isMounted && typeof window !== "undefined") {
+            try {
+              router.push("/game/lobby");
+            } catch (error) {
+              console.error("Error navigating to lobby:", error);
+            }
+          }
+        }, 100);
       }
     } else {
       // Нет ни сохраненных данных, ни URL параметров - оффлайн режим
@@ -93,6 +110,9 @@ function GamePageContent() {
 
     return () => {
       isMounted = false;
+      if (navigationTimeout) {
+        clearTimeout(navigationTimeout);
+      }
     };
   }, [searchParams, router]);
 
@@ -102,25 +122,29 @@ function GamePageContent() {
   const localGame = useGameState();
 
   // Хук должен вызываться всегда, но с правильными параметрами
-  const networkGame = useNetworkGameState(
-    networkGameData && socket && isNetworkMode
-      ? {
-          lobbyId: networkGameData.lobby.id,
-          playerSlotMap: networkGameData.playerSlotMap,
-          socketId: socket.id || null,
-          socket,
-          isConnected,
-          aiSlots: networkGameData.aiSlots || [],
-        }
-      : {
-          lobbyId: "",
-          playerSlotMap: {},
-          socketId: null,
-          socket: null,
-          isConnected: false,
-          aiSlots: [],
-        }
-  );
+  // Используем стабильные значения по умолчанию, чтобы избежать изменения порядка хуков
+  const networkGameParams = React.useMemo(() => {
+    if (networkGameData && socket && isNetworkMode) {
+      return {
+        lobbyId: networkGameData.lobby.id,
+        playerSlotMap: networkGameData.playerSlotMap,
+        socketId: socket.id || null,
+        socket,
+        isConnected,
+        aiSlots: networkGameData.aiSlots || [],
+      };
+    }
+    return {
+      lobbyId: "",
+      playerSlotMap: {},
+      socketId: null,
+      socket: null,
+      isConnected: false,
+      aiSlots: [],
+    };
+  }, [networkGameData, socket, isNetworkMode, isConnected]);
+
+  const networkGame = useNetworkGameState(networkGameParams);
 
   // Определяем myPlayerId для сетевого режима
   // Используем сохраненный playerId из sessionStorage, если networkGame.myPlayerId не определен
