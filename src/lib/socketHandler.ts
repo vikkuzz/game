@@ -267,58 +267,69 @@ export default function socketHandler(io: SocketIOServer) {
     // Обработка переподключения игрока к игре
     socket.on("game:reconnect", (data: { roomId: string; previousSocketId?: string; playerId?: PlayerId }) => {
       try {
+        console.log(`[SocketHandler] Reconnection attempt - roomId: ${data.roomId}, previousSocketId: ${data.previousSocketId}, playerId: ${data.playerId}, newSocketId: ${socket.id}`);
+        
         const room = gameServer.getGame(data.roomId);
         if (!room) {
+          console.error(`[SocketHandler] Game room not found: ${data.roomId}`);
           socket.emit("game:error", { message: "Game room not found" });
           return;
         }
 
         let playerId: PlayerId | null = null;
 
-        // Если передан playerId напрямую, используем его
+        // Приоритет 1: Если передан playerId напрямую, используем его
         if (data.playerId !== undefined) {
           playerId = data.playerId;
-          // Используем новый метод для установки socket ID
-          gameServer.setPlayerSocketId(data.roomId, socket.id, playerId);
-          console.log(`[SocketHandler] Set socket ID for player ${playerId} in room ${data.roomId}: ${socket.id}`);
-        } else if (data.previousSocketId) {
-          // Если передан предыдущий socket ID, обновляем маппинг
+          const success = gameServer.setPlayerSocketId(data.roomId, socket.id, playerId);
+          if (success) {
+            console.log(`[SocketHandler] Set socket ID for player ${playerId} in room ${data.roomId}: ${socket.id}`);
+          } else {
+            console.warn(`[SocketHandler] Failed to set socket ID for player ${playerId} in room ${data.roomId}`);
+          }
+        } 
+        // Приоритет 2: Если передан предыдущий socket ID, обновляем маппинг
+        else if (data.previousSocketId) {
           playerId = gameServer.getPlayerId(data.roomId, data.previousSocketId);
           if (playerId !== null) {
-            gameServer.updatePlayerSocketId(data.roomId, data.previousSocketId, socket.id);
-            console.log(`[SocketHandler] Updated socket ID for player ${playerId} in room ${data.roomId}: ${data.previousSocketId} -> ${socket.id}`);
+            const success = gameServer.updatePlayerSocketId(data.roomId, data.previousSocketId, socket.id);
+            if (success) {
+              console.log(`[SocketHandler] Updated socket ID for player ${playerId} in room ${data.roomId}: ${data.previousSocketId} -> ${socket.id}`);
+            } else {
+              console.warn(`[SocketHandler] Failed to update socket ID for player ${playerId} in room ${data.roomId}`);
+            }
+          } else {
+            console.warn(`[SocketHandler] Previous socket ID ${data.previousSocketId} not found in room ${data.roomId}`);
+          }
+        }
+        // Приоритет 3: Пытаемся найти playerId по текущему socket ID (на случай если он уже был обновлен)
+        if (playerId === null) {
+          playerId = gameServer.getPlayerId(data.roomId, socket.id);
+          if (playerId !== null) {
+            console.log(`[SocketHandler] Found existing playerId ${playerId} for socket ${socket.id} in room ${data.roomId}`);
           }
         }
 
+        // Присоединяемся к комнате
+        socket.join(data.roomId);
+        
+        // Отправляем текущее состояние игры переподключившемуся игроку
+        const aiSlots = Array.from(room.aiSlots);
+        const playerSlotMap = Object.fromEntries(room.playerSlotMap);
+        
+        socket.emit("game:state", {
+          gameState: room.gameState,
+          aiSlots: aiSlots,
+          playerSlotMap: playerSlotMap,
+        });
+        
         if (playerId !== null) {
-          socket.join(data.roomId);
-          
-          // Отправляем текущее состояние игры переподключившемуся игроку
-          const aiSlots = Array.from(room.aiSlots);
-          const playerSlotMap = Object.fromEntries(room.playerSlotMap);
-          
-          socket.emit("game:state", {
-            gameState: room.gameState,
-            aiSlots: aiSlots,
-            playerSlotMap: playerSlotMap,
-          });
-          
-          console.log(`[SocketHandler] Sent game state to reconnected player ${playerId} in room ${data.roomId}`);
-          
-          console.log(`[SocketHandler] Player ${playerId} reconnected to game ${data.roomId}`);
+          console.log(`[SocketHandler] Successfully reconnected player ${playerId} to game ${data.roomId}, sent game state`);
         } else {
-          // Если не удалось определить playerId, отправляем текущее состояние
-          const aiSlots = Array.from(room.aiSlots);
-          const playerSlotMap = Object.fromEntries(room.playerSlotMap);
-          socket.emit("game:state", {
-            gameState: room.gameState,
-            aiSlots: aiSlots,
-            playerSlotMap: playerSlotMap
-          });
-          console.warn(`[SocketHandler] Could not determine playerId for reconnection in room ${data.roomId}`);
+          console.warn(`[SocketHandler] Reconnected to game ${data.roomId} but could not determine playerId. Sent game state anyway.`);
         }
       } catch (error) {
-        console.error("Error handling reconnection:", error);
+        console.error("[SocketHandler] Error handling reconnection:", error);
         socket.emit("game:error", { message: "Failed to reconnect" });
       }
     });

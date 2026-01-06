@@ -83,6 +83,9 @@ export function useSocket(): UseSocketReturn {
         // Сервер принудительно отключил клиента, нужно переподключиться вручную
         console.log("[useSocket] Server disconnected, will reconnect manually");
         newSocket.connect();
+      } else if (reason === "transport close" || reason === "ping timeout") {
+        // Это обычный разрыв соединения - Socket.IO автоматически переподключится
+        console.log("[useSocket] Connection lost, Socket.IO will attempt to reconnect automatically");
       }
     });
     

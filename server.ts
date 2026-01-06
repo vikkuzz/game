@@ -32,6 +32,10 @@ app.prepare().then(() => {
       origin: "*",
       methods: ["GET", "POST"],
     },
+    pingTimeout: 60000, // 60 секунд - увеличиваем таймаут для более стабильного соединения
+    pingInterval: 25000, // 25 секунд - интервал пинга
+    transports: ["websocket", "polling"], // Поддержка обоих транспортов
+    allowEIO3: true, // Поддержка старых клиентов
   });
 
   // Импортируем обработчики socket.io
